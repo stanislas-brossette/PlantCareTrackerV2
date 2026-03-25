@@ -248,31 +248,31 @@ export default function PlantDetail() {
               <MoreVertical className="w-5 h-5" />
             </button>
             {showMenu && (
-              <div className="absolute right-0 top-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 min-w-40">
+              <div className="absolute right-0 top-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg z-10 min-w-40">
                 <Link
                   to={`/plants/${id}/edit`}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-xl"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-xl"
                 >
                   <Edit className="w-4 h-4" /> Modifier
                 </Link>
                 {plant.photoUrl && (
                   <button
                     onClick={() => { setShowIdentify(true); setShowMenu(false); }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600"
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-purple-600 dark:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     <Sparkles className="w-4 h-4" /> Identifier
                   </button>
                 )}
                 <button
                   onClick={handleArchive}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   <RefreshCw className="w-4 h-4" />
                   {plant.archived ? "Restaurer" : "Archiver"}
                 </button>
                 <button
                   onClick={handleDelete}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 rounded-b-xl"
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-xl"
                 >
                   <Trash2 className="w-4 h-4" /> Supprimer
                 </button>
@@ -311,7 +311,7 @@ export default function PlantDetail() {
           </div>
         )}
         {plant.notes && (
-          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+          <p className="whitespace-pre-line text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
             {plant.notes}
           </p>
         )}

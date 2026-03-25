@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Archive } from "lucide-react";
+import { Plus, Search, Archive, MapPin } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import { useRecordCare } from "../hooks/useCare";
 import { useAuthStore } from "../stores/auth";
@@ -15,14 +15,41 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
+  const activeCount = plants.filter((p) => !p.archived).length;
+  const archivedCount = plants.filter((p) => p.archived).length;
+
   const filtered = plants.filter((p) => {
     if (!showArchived && p.archived) return false;
     if (showArchived && !p.archived) return false;
     return p.name.toLowerCase().includes(search.toLowerCase());
   });
 
-  const urgent = filtered.filter((p) => p.needsWatering || p.needsFertilizing);
-  const normal = filtered.filter((p) => !p.needsWatering && !p.needsFertilizing);
+  const groupedPlants = Object.values(
+    filtered.reduce<Record<string, { label: string; sortKey: string; plants: typeof filtered }>>(
+      (acc, plant) => {
+        const label = plant.location?.name?.trim() || "Sans emplacement";
+        const sortKey = plant.location?.name?.trim().toLocaleLowerCase() || "\uffff";
+
+        if (!acc[label]) {
+          acc[label] = { label, sortKey, plants: [] };
+        }
+
+        acc[label].plants.push(plant);
+        return acc;
+      },
+      {}
+    )
+  )
+    .map((group) => ({
+      ...group,
+      plants: [...group.plants].sort((a, b) => {
+        const aUrgent = a.needsWatering || a.needsFertilizing ? 1 : 0;
+        const bUrgent = b.needsWatering || b.needsFertilizing ? 1 : 0;
+        if (aUrgent !== bUrgent) return bUrgent - aUrgent;
+        return a.name.localeCompare(b.name, "fr");
+      }),
+    }))
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey, "fr"));
 
   const handleCare = async (plantId: string, type: "WATERING" | "FERTILIZING") => {
     const labels = { WATERING: "arrosée 💧", FERTILIZING: "fertilisée 🌿" };
@@ -44,49 +71,65 @@ export default function Home() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="search"
-            placeholder="Rechercher une plante..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-          />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+            Jardin
+          </p>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {showArchived ? "Plantes archivées" : "Mes plantes"}
+          </h1>
         </div>
         <Link
           to="/plants/new"
-          className="bg-green-600 text-white p-2.5 rounded-xl hover:bg-green-700 transition-colors flex-shrink-0"
+          className="bg-green-600 text-white p-2.5 rounded-xl hover:bg-green-700 transition-colors flex-shrink-0 shadow-sm shadow-green-900/10"
+          aria-label="Ajouter une plante"
         >
           <Plus className="w-5 h-5" />
         </Link>
       </div>
 
-      {/* Toggle archived */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setShowArchived(false)}
-          className={`flex-1 py-1.5 rounded-xl text-sm font-medium transition-colors ${
-            !showArchived
-              ? "bg-green-600 text-white"
-              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-          }`}
-        >
-          Actives ({plants.filter((p) => !p.archived).length})
-        </button>
-        <button
-          onClick={() => setShowArchived(true)}
-          className={`flex-1 py-1.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
-            showArchived
-              ? "bg-gray-600 text-white"
-              : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-          }`}
-        >
-          <Archive className="w-4 h-4" />
-          Archivées ({plants.filter((p) => p.archived).length})
-        </button>
+      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <span>{activeCount} active{activeCount > 1 ? "s" : ""}</span>
+        <span className="text-gray-300 dark:text-gray-600">•</span>
+        <span>{archivedCount} archivée{archivedCount > 1 ? "s" : ""}</span>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
+          <input
+            type="search"
+            placeholder="Rechercher une plante..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-9 pl-9 pr-3 bg-transparent border border-gray-200 dark:border-gray-700 rounded-full text-sm text-gray-600 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500/40"
+          />
+        </div>
+
+        <div className="inline-flex w-full sm:w-auto rounded-full border border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-800/50 p-1">
+          <button
+            onClick={() => setShowArchived(false)}
+            className={`flex-1 sm:flex-none px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !showArchived
+                ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            }`}
+          >
+            Actives ({activeCount})
+          </button>
+          <button
+            onClick={() => setShowArchived(true)}
+            className={`flex-1 sm:flex-none px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+              showArchived
+                ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            }`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Archivées ({archivedCount})
+          </button>
+        </div>
       </div>
 
       {isLoading && (
@@ -116,7 +159,7 @@ export default function Home() {
       )}
 
       {!isLoading && filtered.length > 0 && (
-        <div>
+        <div className="space-y-4">
           {/* Column headers */}
           <div className="flex h-8 mb-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
             <div className="w-48 flex-shrink-0 flex items-center px-2">Plante</div>
@@ -124,38 +167,30 @@ export default function Home() {
             <div className="flex-1 flex items-center justify-center">🌿 Engrais</div>
           </div>
 
-          {/* Urgent */}
-          {urgent.length > 0 && (
-            <div className="space-y-1.5 mb-1.5">
-              {urgent.map((plant) => (
-                <PlantCard
-                  key={plant.id}
-                  plant={plant}
-                  onWater={() => handleCare(plant.id, "WATERING")}
-                  onFertilize={() => handleCare(plant.id, "FERTILIZING")}
-                />
-              ))}
-            </div>
-          )}
+          {groupedPlants.map((group) => (
+            <section key={group.label} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <MapPin className="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  {group.label}
+                </h2>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  ({group.plants.length})
+                </span>
+              </div>
 
-          {/* Separator */}
-          {urgent.length > 0 && normal.length > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
-          )}
-
-          {/* Normal */}
-          {normal.length > 0 && (
-            <div className="space-y-1.5">
-              {normal.map((plant) => (
-                <PlantCard
-                  key={plant.id}
-                  plant={plant}
-                  onWater={() => handleCare(plant.id, "WATERING")}
-                  onFertilize={() => handleCare(plant.id, "FERTILIZING")}
-                />
-              ))}
-            </div>
-          )}
+              <div className="space-y-1.5">
+                {group.plants.map((plant) => (
+                  <PlantCard
+                    key={plant.id}
+                    plant={plant}
+                    onWater={() => handleCare(plant.id, "WATERING")}
+                    onFertilize={() => handleCare(plant.id, "FERTILIZING")}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </div>
