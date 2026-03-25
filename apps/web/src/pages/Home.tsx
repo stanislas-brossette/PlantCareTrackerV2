@@ -90,9 +90,9 @@ export default function Home() {
       </div>
 
       {isLoading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="h-24 bg-gray-200 dark:bg-gray-700 rounded-2xl animate-pulse" />
+        <div className="space-y-1.5">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <div key={n} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl animate-pulse" />
           ))}
         </div>
       )}
@@ -115,41 +115,47 @@ export default function Home() {
         </div>
       )}
 
-      {urgent.length > 0 && (
+      {!isLoading && filtered.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
-            ⚠️ Attention requise ({urgent.length})
-          </h2>
-          <div className="space-y-3">
-            {urgent.map((plant) => (
-              <PlantCard
-                key={plant.id}
-                plant={plant}
-                onWater={() => handleCare(plant.id, "WATERING")}
-                onFertilize={() => handleCare(plant.id, "FERTILIZING")}
-              />
-            ))}
+          {/* Column headers */}
+          <div className="flex h-8 mb-1 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+            <div className="w-48 flex-shrink-0 flex items-center px-2">Plante</div>
+            <div className="flex-1 flex items-center justify-center">💧 Arrosage</div>
+            <div className="flex-1 flex items-center justify-center">🌿 Engrais</div>
           </div>
-        </div>
-      )}
 
-      {normal.length > 0 && (
-        <div>
+          {/* Urgent */}
           {urgent.length > 0 && (
-            <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
-              ✓ Plantes en bonne santé ({normal.length})
-            </h2>
+            <div className="space-y-1.5 mb-1.5">
+              {urgent.map((plant) => (
+                <PlantCard
+                  key={plant.id}
+                  plant={plant}
+                  onWater={() => handleCare(plant.id, "WATERING")}
+                  onFertilize={() => handleCare(plant.id, "FERTILIZING")}
+                />
+              ))}
+            </div>
           )}
-          <div className="space-y-3">
-            {normal.map((plant) => (
-              <PlantCard
-                key={plant.id}
-                plant={plant}
-                onWater={() => handleCare(plant.id, "WATERING")}
-                onFertilize={() => handleCare(plant.id, "FERTILIZING")}
-              />
-            ))}
-          </div>
+
+          {/* Separator */}
+          {urgent.length > 0 && normal.length > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-700 my-2" />
+          )}
+
+          {/* Normal */}
+          {normal.length > 0 && (
+            <div className="space-y-1.5">
+              {normal.map((plant) => (
+                <PlantCard
+                  key={plant.id}
+                  plant={plant}
+                  onWater={() => handleCare(plant.id, "WATERING")}
+                  onFertilize={() => handleCare(plant.id, "FERTILIZING")}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

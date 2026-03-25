@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Droplets, Sprout, Scissors, RefreshCw,
-  Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical
+  ArrowLeft, RefreshCw, Trash2, Edit, Sparkles,
+  Undo2, Loader2, MoreVertical, MapPin, ChevronLeft, ChevronRight
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow, format, addDays } from "date-fns";
 import { fr } from "date-fns/locale";
-import { usePlant } from "../hooks/usePlants";
+import { usePlant, usePlants } from "../hooks/usePlants";
 import { useCareEvents, useRecordCare, useUndoCare } from "../hooks/useCare";
 import { useAuthStore } from "../stores/auth";
 import IdentifyModal from "../components/IdentifyModal";
@@ -16,13 +16,122 @@ import api from "../lib/api";
 import type { CareType } from "@plantcare/shared";
 
 const CARE_LABELS: Record<CareType, { label: string; icon: string; color: string }> = {
-  WATERING: { label: "Arrosage", icon: "💧", color: "text-blue-600" },
+  WATERING:    { label: "Arrosage",     icon: "💧", color: "text-blue-600" },
   FERTILIZING: { label: "Fertilisation", icon: "🌿", color: "text-green-600" },
-  REPOTTING: { label: "Rempotage", icon: "🪴", color: "text-orange-600" },
-  PRUNING: { label: "Taille", icon: "✂️", color: "text-purple-600" },
-  TREATMENT: { label: "Traitement", icon: "💊", color: "text-red-600" },
-  OTHER: { label: "Autre", icon: "📝", color: "text-gray-600" },
+  REPOTTING:   { label: "Rempotage",    icon: "🪴", color: "text-orange-600" },
+  PRUNING:     { label: "Taille",       icon: "✂️", color: "text-purple-600" },
+  TREATMENT:   { label: "Traitement",   icon: "💊", color: "text-red-600" },
+  OTHER:       { label: "Autre",        icon: "📝", color: "text-gray-600" },
 };
+
+const MONTH_SHORT = ["J","F","M","A","M","J","J","A","S","O","N","D"];
+const CURRENT_MONTH = new Date().getMonth();
+
+/** Mini bar chart for a 12-month frequency array */
+function FreqBar({ values }: { values: number[] }) {
+  const max = Math.max(...values.filter(Boolean), 1);
+  return (
+    <div className="flex gap-px h-6 items-end">
+      {values.map((v, i) => (
+        <div
+          key={i}
+          title={`${MONTH_SHORT[i]}: ${v > 0 ? `${v}j` : "—"}`}
+          className="flex-1 rounded-sm transition-all"
+          style={{
+            height: v > 0 ? `${Math.round((v / max) * 100)}%` : "3px",
+            minHeight: "3px",
+            backgroundColor:
+              i === CURRENT_MONTH
+                ? "#16a34a"
+                : v === 0
+                ? "#e5e7eb"
+                : "#86efac",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Compact schedule block */
+function ScheduleRow({
+  emoji,
+  label,
+  freq,
+  freqByMonth,
+  lastDate,
+  needs,
+  onRecord,
+  onUndo,
+}: {
+  emoji: string;
+  label: string;
+  freq: number | null | undefined;
+  freqByMonth: number[] | null | undefined;
+  lastDate: string | null | undefined;
+  needs: boolean | null | undefined;
+  onRecord: () => void;
+  onUndo: () => void;
+}) {
+  const nextDate =
+    lastDate && freq ? addDays(new Date(lastDate), freq) : null;
+
+  return (
+    <div className="flex items-center gap-3">
+      {/* Mini bar chart */}
+      <div className="w-24 flex-shrink-0">
+        {freqByMonth ? (
+          <FreqBar values={freqByMonth} />
+        ) : (
+          <div className="h-6 flex items-center">
+            <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-600" />
+          </div>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+          <span>{emoji} {label}</span>
+          {freq && (
+            <span className="text-gray-400">· tous les {freq}j</span>
+          )}
+        </div>
+        <div className="text-xs text-gray-400 truncate">
+          {lastDate
+            ? `Dernier : ${formatDistanceToNow(new Date(lastDate), { addSuffix: true, locale: fr })}`
+            : "Jamais"}
+          {nextDate && (
+            <span className="ml-1">
+              · Prochain : {format(nextDate, "d MMM", { locale: fr })}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-1.5 flex-shrink-0 items-center">
+        <button
+          onClick={onRecord}
+          className={`px-4 py-2 rounded-xl text-base font-medium transition-colors ${
+            needs
+              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200"
+              : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200"
+          }`}
+        >
+          {emoji}
+        </button>
+        <button
+          onClick={onUndo}
+          title="Annuler le dernier soin"
+          className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        >
+          <Undo2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function PlantDetail() {
   const { id } = useParams<{ id: string }>();
@@ -31,9 +140,15 @@ export default function PlantDetail() {
   const qc = useQueryClient();
 
   const { data: plant, isLoading } = usePlant(id);
+  const { plants } = usePlants(activeGardenId);
   const { data: events = [] } = useCareEvents(id);
   const recordCare = useRecordCare(activeGardenId);
   const undoCare = useUndoCare(activeGardenId);
+
+  const activePlants = plants.filter((p) => !p.archived);
+  const currentIndex = activePlants.findIndex((p) => p.id === id);
+  const prevPlant = currentIndex > 0 ? activePlants[currentIndex - 1] : null;
+  const nextPlant = currentIndex < activePlants.length - 1 ? activePlants[currentIndex + 1] : null;
 
   const [showIdentify, setShowIdentify] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -43,8 +158,7 @@ export default function PlantDetail() {
     if (!id) return;
     await recordCare.mutateAsync({ plantId: id, type, note: careNote || undefined });
     setCareNote("");
-    const c = CARE_LABELS[type];
-    toast.success(`${c.icon} ${c.label} enregistré`);
+    toast.success(`${CARE_LABELS[type].icon} ${CARE_LABELS[type].label} enregistré`);
   };
 
   const handleUndo = async (type: "WATERING" | "FERTILIZING") => {
@@ -76,7 +190,6 @@ export default function PlantDetail() {
   };
 
   const handleIdentified = () => {
-    // Refetch plant data to show updated notes + frequencies
     qc.invalidateQueries({ queryKey: ["plant", id] });
     qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
     toast.success("Données de la plante mises à jour ✓");
@@ -100,86 +213,137 @@ export default function PlantDetail() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="font-bold text-lg text-gray-900 dark:text-white truncate flex-1 text-center mx-3">
-          {plant.name}
-        </h1>
-        <div className="relative">
+    <div className="space-y-4">
+
+      {/* Photo hero — full image visible, header overlaid */}
+      <div className="relative rounded-2xl overflow-hidden">
+        {plant.photoUrl ? (
+          <img
+            src={plant.photoUrl}
+            alt={plant.name}
+            className="w-full object-contain max-h-72"
+          />
+        ) : (
+          <div className="h-40 flex items-center justify-center text-5xl">🌿</div>
+        )}
+
+        {/* Header overlay */}
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-2"
+          style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)" }}
+        >
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800"
+            onClick={() => navigate(-1)}
+            className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
           >
-            <MoreVertical className="w-5 h-5" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          {showMenu && (
-            <div className="absolute right-0 top-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 min-w-40">
-              <Link
-                to={`/plants/${id}/edit`}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-xl"
-              >
-                <Edit className="w-4 h-4" /> Modifier
-              </Link>
-              {plant.photoUrl && (
-                <button
-                  onClick={() => { setShowIdentify(true); setShowMenu(false); }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600"
+          <h1 className="font-bold text-white text-base truncate mx-2 drop-shadow">
+            {plant.name}
+          </h1>
+          <div className="relative">
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
+            >
+              <MoreVertical className="w-5 h-5" />
+            </button>
+            {showMenu && (
+              <div className="absolute right-0 top-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 min-w-40">
+                <Link
+                  to={`/plants/${id}/edit`}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-xl"
                 >
-                  <Sparkles className="w-4 h-4" /> Identifier
+                  <Edit className="w-4 h-4" /> Modifier
+                </Link>
+                {plant.photoUrl && (
+                  <button
+                    onClick={() => { setShowIdentify(true); setShowMenu(false); }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600"
+                  >
+                    <Sparkles className="w-4 h-4" /> Identifier
+                  </button>
+                )}
+                <button
+                  onClick={handleArchive}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  {plant.archived ? "Restaurer" : "Archiver"}
                 </button>
-              )}
-              <button
-                onClick={handleArchive}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                <RefreshCw className="w-4 h-4" />
-                {plant.archived ? "Restaurer" : "Archiver"}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 rounded-b-xl"
-              >
-                <Trash2 className="w-4 h-4" /> Supprimer
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={handleDelete}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 rounded-b-xl"
+                >
+                  <Trash2 className="w-4 h-4" /> Supprimer
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Prev / Next plant navigation */}
+        {prevPlant && (
+          <button
+            onClick={() => navigate(`/plants/${prevPlant.id}`)}
+            title={prevPlant.name}
+            className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
+          >
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+        )}
+        {nextPlant && (
+          <button
+            onClick={() => navigate(`/plants/${nextPlant.id}`)}
+            title={nextPlant.name}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
+          >
+            <ChevronRight className="w-6 h-6" />
+          </button>
+        )}
       </div>
 
-      {/* Photo */}
-      {plant.photoUrl && (
-        <div className="rounded-2xl overflow-hidden h-56 bg-gray-100 dark:bg-gray-800">
-          <img src={plant.photoUrl} alt={plant.name} className="w-full h-full object-cover" />
-        </div>
-      )}
-
-      {/* Info */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-2 shadow-sm">
-        {plant.notes && <p className="text-gray-600 dark:text-gray-300 text-sm">{plant.notes}</p>}
-        <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-          {plant.location && <span>📍 {plant.location.name}</span>}
-          {plant.currentWateringFreq != null && (
-            <span title="Fréquence ce mois-ci">
-              💧 tous les {plant.currentWateringFreq}j
-              {plant.wateringFreqByMonth && <span className="text-xs text-green-600 ml-1">(saisonnier)</span>}
-            </span>
-          )}
-          {plant.currentFertilizingFreq != null && (
-            <span title="Fréquence ce mois-ci">
-              🌿 tous les {plant.currentFertilizingFreq}j
-              {plant.fertilizingFreqByMonth && <span className="text-xs text-green-600 ml-1">(saisonnier)</span>}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Quick care buttons */}
+      {/* Info + plannings */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-white text-sm">Enregistrer un soin</h2>
+        {/* Location + notes */}
+        {plant.location && (
+          <div className="flex items-center gap-1 text-xs text-gray-400">
+            <MapPin className="w-3 h-3" /> {plant.location.name}
+          </div>
+        )}
+        {plant.notes && (
+          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+            {plant.notes}
+          </p>
+        )}
+
+        {/* Schedules */}
+        <div className="space-y-2 pt-1 border-t border-gray-100 dark:border-gray-700">
+          <ScheduleRow
+            emoji="💧"
+            label="Arrosage"
+            freq={plant.currentWateringFreq}
+            freqByMonth={plant.wateringFreqByMonth}
+            lastDate={plant.lastWatered}
+            needs={plant.needsWatering}
+            onRecord={() => handleCare("WATERING")}
+            onUndo={() => handleUndo("WATERING")}
+          />
+          <ScheduleRow
+            emoji="🌿"
+            label="Fertilisation"
+            freq={plant.currentFertilizingFreq}
+            freqByMonth={plant.fertilizingFreqByMonth}
+            lastDate={plant.lastFertilized}
+            needs={plant.needsFertilizing}
+            onRecord={() => handleCare("FERTILIZING")}
+            onUndo={() => handleUndo("FERTILIZING")}
+          />
+        </div>
+      </div>
+
+      {/* Other care actions */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm space-y-3">
+        <h2 className="font-semibold text-gray-900 dark:text-white text-sm">Autres soins</h2>
         <input
           type="text"
           placeholder="Note (optionnelle)..."
@@ -187,43 +351,21 @@ export default function PlantDetail() {
           onChange={(e) => setCareNote(e.target.value)}
           className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
         />
-        <div className="grid grid-cols-3 gap-2">
-          {(["WATERING", "FERTILIZING", "REPOTTING", "PRUNING", "TREATMENT", "OTHER"] as CareType[]).map((type) => {
+        <div className="grid grid-cols-4 gap-2">
+          {(["REPOTTING", "PRUNING", "TREATMENT", "OTHER"] as CareType[]).map((type) => {
             const c = CARE_LABELS[type];
             return (
               <button
                 key={type}
                 onClick={() => handleCare(type)}
                 disabled={recordCare.isPending}
-                className={`py-2 px-1 rounded-xl text-xs font-medium border transition-colors flex flex-col items-center gap-1 ${
-                  type === "WATERING" && plant.needsWatering
-                    ? "bg-red-50 border-red-300 text-red-600 dark:bg-red-900/20"
-                    : type === "FERTILIZING" && plant.needsFertilizing
-                    ? "bg-red-50 border-red-300 text-red-600 dark:bg-red-900/20"
-                    : "bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-green-400"
-                }`}
+                className="py-2 px-1 rounded-xl text-xs font-medium border bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-green-400 transition-colors flex flex-col items-center gap-1"
               >
                 <span className="text-lg">{c.icon}</span>
                 {c.label}
               </button>
             );
           })}
-        </div>
-
-        {/* Undo row */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => handleUndo("WATERING")}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-gray-500 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50"
-          >
-            <Undo2 className="w-3 h-3" /> Annuler arrosage
-          </button>
-          <button
-            onClick={() => handleUndo("FERTILIZING")}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs text-gray-500 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-gray-50"
-          >
-            <Undo2 className="w-3 h-3" /> Annuler fertilisation
-          </button>
         </div>
       </div>
 
@@ -241,7 +383,7 @@ export default function PlantDetail() {
                   key={event.id}
                   className="flex items-start gap-3 py-2 border-b border-gray-50 dark:border-gray-700 last:border-0"
                 >
-                  <span className="text-lg">{c.icon}</span>
+                  <span className="text-base">{c.icon}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className={`text-sm font-medium ${c.color}`}>{c.label}</span>
