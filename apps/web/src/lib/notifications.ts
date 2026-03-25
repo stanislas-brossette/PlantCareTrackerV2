@@ -24,7 +24,7 @@ export async function subscribeToPush(): Promise<boolean> {
 
   const sub = await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidKey),
+    applicationServerKey: toArrayBuffer(urlBase64ToUint8Array(vapidKey)),
   });
 
   await sendSubToServer(sub);
@@ -56,4 +56,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(base64);
   return new Uint8Array([...raw].map((c) => c.charCodeAt(0)));
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }

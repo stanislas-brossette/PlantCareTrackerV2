@@ -16,9 +16,12 @@ async function executeAction(pending: PendingAction): Promise<void> {
         params: { plantId: action.payload.plantId, type: action.payload.type },
       });
       break;
-    case "CREATE_PLANT":
-      await api.post("/plants", action.payload);
+    case "CREATE_PLANT": {
+      const { tempId, ...payload } = action.payload;
+      await api.post("/plants", payload);
+      await db.plants.delete(tempId);
       break;
+    }
     case "UPDATE_PLANT": {
       const { id, ...rest } = action.payload;
       await api.patch(`/plants/${id}`, rest);

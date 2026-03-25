@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, RefreshCw, Trash2, Edit, Sparkles,
+  Home, RefreshCw, Trash2, Edit, Sparkles,
   Undo2, Loader2, MoreVertical, MapPin, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { formatDistanceToNow, format, addDays } from "date-fns";
@@ -232,10 +232,10 @@ export default function PlantDetail() {
           style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)" }}
         >
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate("/")}
             className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <Home className="w-5 h-5" />
           </button>
           <h1 className="font-bold text-white text-base truncate mx-2 drop-shadow">
             {plant.name}

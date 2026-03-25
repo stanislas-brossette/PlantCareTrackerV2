@@ -36,17 +36,25 @@ export function usePlants(gardenId: string | null) {
         const tempId = crypto.randomUUID();
         const tempPlant: Plant = {
           id: tempId,
+          name: body.name,
           archived: false,
           photoUrl: null,
+          notes: body.notes ?? null,
+          gardenId: body.gardenId,
           location: null,
-          locationId: null,
+          locationId: body.locationId ?? null,
+          wateringFreqDays: body.wateringFreqDays ?? null,
+          fertilizingFreqDays: body.fertilizingFreqDays ?? null,
+          wateringFreqByMonth: body.wateringFreqByMonth ?? null,
+          fertilizingFreqByMonth: body.fertilizingFreqByMonth ?? null,
           lastWatered: null,
           lastFertilized: null,
           needsWatering: false,
           needsFertilizing: false,
+          currentWateringFreq: body.wateringFreqDays ?? null,
+          currentFertilizingFreq: body.fertilizingFreqDays ?? null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          ...body,
         };
         await db.plants.add({ ...tempPlant, _localOnly: true });
         await queueAction({ kind: "CREATE_PLANT", payload: { ...body, tempId } });

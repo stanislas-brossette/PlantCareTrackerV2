@@ -161,6 +161,8 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       notes?: string;
       wateringFreqDays?: number;
       fertilizingFreqDays?: number;
+      wateringFreqByMonth?: number[];
+      fertilizingFreqByMonth?: number[];
       locationId?: string;
     };
   }>(
@@ -201,6 +203,8 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       notes?: string;
       wateringFreqDays?: number;
       fertilizingFreqDays?: number;
+      wateringFreqByMonth?: number[] | null;
+      fertilizingFreqByMonth?: number[] | null;
       locationId?: string;
       archived?: boolean;
     };

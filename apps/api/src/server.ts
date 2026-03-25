@@ -58,16 +58,19 @@ async function build() {
       prefix: "/",
       decorateReply: false,
     });
-    fastify.setNotFoundHandler((_req, reply) => {
+    fastify.setNotFoundHandler((req, reply) => {
+      if (req.url.startsWith("/api/")) {
+        return reply.status(404).send({ error: "Not found" });
+      }
       reply.sendFile("index.html", WEB_DIST);
     });
   } else {
     fastify.log.info("Frontend dist not found — running in API-only mode (use Vite dev server)");
   }
 
-  // Plugins
-  await fastify.register(prismaPlugin);
-  await fastify.register(authPlugin);
+  // Core app setup
+  await prismaPlugin(fastify, {});
+  await authPlugin(fastify, {});
 
   // Routes
   fastify.register(authRoutes, { prefix: "/api/auth" });

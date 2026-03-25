@@ -1,4 +1,3 @@
-import fp from "fastify-plugin";
 import { FastifyPluginAsync } from "fastify";
 import { PrismaClient } from "@prisma/client";
 
@@ -8,7 +7,7 @@ declare module "fastify" {
   }
 }
 
-const prismaPlugin: FastifyPluginAsync = fp(async (fastify) => {
+const prismaPlugin: FastifyPluginAsync = async (fastify) => {
   const prisma = new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query", "warn", "error"] : ["warn", "error"],
   });
@@ -20,6 +19,6 @@ const prismaPlugin: FastifyPluginAsync = fp(async (fastify) => {
   fastify.addHook("onClose", async () => {
     await prisma.$disconnect();
   });
-});
+};
 
 export default prismaPlugin;

@@ -1,4 +1,3 @@
-import fp from "fastify-plugin";
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import fastifyJwt from "@fastify/jwt";
 import fastifyCookie from "@fastify/cookie";
@@ -24,10 +23,10 @@ declare module "@fastify/jwt" {
   }
 }
 
-const authPlugin: FastifyPluginAsync = fp(async (fastify) => {
-  fastify.register(fastifyCookie);
+const authPlugin: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(fastifyCookie);
 
-  fastify.register(fastifyJwt, {
+  await fastify.register(fastifyJwt, {
     secret: process.env.JWT_SECRET || "change-me-in-production-please",
     cookie: {
       cookieName: "token",
@@ -53,6 +52,6 @@ const authPlugin: FastifyPluginAsync = fp(async (fastify) => {
       }
     }
   );
-});
+};
 
 export default authPlugin;
