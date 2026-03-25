@@ -85,16 +85,91 @@ function summarizeAvailableUpdates(result: IdentificationResult) {
   };
 }
 
+async function analyzeImageBuffer(imageBuffer: Buffer) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OpenAI API key not configured");
+  }
+
+  const openai = new OpenAI({ apiKey });
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const imageData = imageBuffer.toString("base64");
+
+  const response = await openai.chat.completions.create({
+    model,
+    temperature: parseFloat(process.env.OPENAI_TEMPERATURE || "0"),
+    max_tokens: 1200,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: {
+              url: `data:image/jpeg;base64,${imageData}`,
+              detail: "low",
+            },
+          },
+          {
+            type: "text",
+            text: `Identifie cette plante et réponds en JSON avec les champs suivants:
+{
+  "nom_commun": "...",
+  "nom_latin": "...",
+  "famille": "...",
+  "description": "...",
+  "arrosage": "description textuelle de l'arrosage",
+  "arrosage_freq_par_mois": [7,7,6,5,4,4,4,4,5,6,7,7],
+  "fertilisation": "description textuelle de la fertilisation",
+  "fertilisation_freq_par_mois": [0,0,30,21,21,14,14,21,30,0,0,0],
+  "lumiere": "...",
+  "temperature": "...",
+  "toxicite": "...",
+  "conseils": "..."
+}
+Pour les tableaux de fréquences: 12 valeurs entières (Jan à Déc), en nombre de JOURS entre chaque soin. Mettre 0 si le soin n'est pas recommandé ce mois-ci (ex: pas de fertilisation en hiver).
+Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
+          },
+        ],
+      },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "{}";
+  try {
+    return JSON.parse(raw.replace(/```json|```/g, "").trim()) as IdentificationResult;
+  } catch {
+    return { raw } satisfies IdentificationResult;
+  }
+}
+
 const identifyRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.post(
+    "/preview",
+    { preHandler: [fastify.authenticate] },
+    async (req, reply) => {
+      const file = await req.file();
+      if (!file) return reply.status(400).send({ error: "No file uploaded" });
+
+      try {
+        const parsed = await analyzeImageBuffer(await file.toBuffer());
+        reply.send({
+          identification: parsed,
+          availableUpdates: summarizeAvailableUpdates(parsed),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erreur lors de l'identification";
+        const statusCode = message === "OpenAI API key not configured" ? 503 : 500;
+        reply.status(statusCode).send({ error: message });
+      }
+    }
+  );
+
   fastify.post<{ Params: { plantId: string } }>(
     "/:plantId",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        return reply.status(503).send({ error: "OpenAI API key not configured" });
-      }
-
       const plant = await fastify.prisma.plant.findUnique({
         where: { id: req.params.plantId },
       });
@@ -112,70 +187,25 @@ const identifyRoutes: FastifyPluginAsync = async (fastify) => {
       // Read the image from disk and encode as base64
       const filename = path.basename(plant.photoUrl);
       const filepath = path.join(UPLOAD_DIR, filename);
-      let imageData: string;
+      let buffer: Buffer;
       try {
-        const buffer = await fs.readFile(filepath);
-        imageData = buffer.toString("base64");
+        buffer = await fs.readFile(filepath);
       } catch {
         return reply.status(404).send({ error: "Photo file not found" });
       }
 
-      const openai = new OpenAI({ apiKey });
-      const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-      const response = await openai.chat.completions.create({
-        model,
-        temperature: parseFloat(process.env.OPENAI_TEMPERATURE || "0"),
-        max_tokens: 1200,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${imageData}`,
-                  detail: "low",
-                },
-              },
-              {
-                type: "text",
-                text: `Identifie cette plante et réponds en JSON avec les champs suivants:
-{
-  "nom_commun": "...",
-  "nom_latin": "...",
-  "famille": "...",
-  "description": "...",
-  "arrosage": "description textuelle de l'arrosage",
-  "arrosage_freq_par_mois": [7,7,6,5,4,4,4,4,5,6,7,7],
-  "fertilisation": "description textuelle de la fertilisation",
-  "fertilisation_freq_par_mois": [0,0,30,21,21,14,14,21,30,0,0,0],
-  "lumiere": "...",
-  "temperature": "...",
-  "toxicite": "...",
-  "conseils": "..."
-}
-Pour les tableaux de fréquences: 12 valeurs entières (Jan à Déc), en nombre de JOURS entre chaque soin. Mettre 0 si le soin n'est pas recommandé ce mois-ci (ex: pas de fertilisation en hiver).
-Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
-              },
-            ],
-          },
-        ],
-      });
-
-      const raw = response.choices[0]?.message?.content ?? "{}";
-
-      let parsed: IdentificationResult;
       try {
-        parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-      } catch {
-        parsed = { raw };
+        const parsed = await analyzeImageBuffer(buffer);
+        return reply.send({
+          identification: parsed,
+          availableUpdates: summarizeAvailableUpdates(parsed),
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erreur lors de l'identification";
+        const statusCode = message === "OpenAI API key not configured" ? 503 : 500;
+        return reply.status(statusCode).send({ error: message });
       }
-
-      reply.send({
-        identification: parsed,
-        availableUpdates: summarizeAvailableUpdates(parsed),
-      });
     }
   );
 

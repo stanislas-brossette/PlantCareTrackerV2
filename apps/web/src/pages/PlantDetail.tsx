@@ -181,6 +181,11 @@ export default function PlantDetail() {
   const handleDelete = async () => {
     if (!id || !confirm("Supprimer définitivement cette plante ?")) return;
     await api.delete(`/plants/${id}`);
+    qc.removeQueries({ queryKey: ["plant", id] });
+    qc.setQueryData(["plants", activeGardenId], (current: typeof plants | undefined) =>
+      current?.filter((plant) => plant.id !== id)
+    );
+    await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
     toast.success("Plante supprimée");
     navigate("/");
   };

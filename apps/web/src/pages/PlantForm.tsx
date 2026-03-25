@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
 import { usePlant, usePlants } from "../hooks/usePlants";
 import { useLocations, useCreateLocation } from "../hooks/useGarden";
 import { useAuthStore } from "../stores/auth";
 import MonthlyFreqEditor from "../components/MonthlyFreqEditor";
+import IdentifyModal from "../components/IdentifyModal";
 import toast from "react-hot-toast";
 import api from "../lib/api";
+import { db } from "../lib/db";
+import type { Plant } from "@plantcare/shared";
 
 function resizeImage(file: File, maxSize = 600): Promise<Blob> {
   return new Promise((resolve) => {
@@ -28,6 +32,7 @@ export default function PlantForm() {
   const { id } = useParams<{ id?: string }>();
   const isEdit = id && id !== "new";
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { activeGardenId } = useAuthStore();
 
   const { data: existing } = usePlant(isEdit ? id : undefined);
@@ -45,7 +50,10 @@ export default function PlantForm() {
   const [newLocation, setNewLocation] = useState("");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [uploadPhotoFile, setUploadPhotoFile] = useState<File | null>(null);
+  const [processingPhoto, setProcessingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showIdentifyModal, setShowIdentifyModal] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -66,10 +74,20 @@ export default function PlantForm() {
   const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const resized = await resizeImage(file);
-    const resizedFile = new File([resized], file.name, { type: "image/jpeg" });
-    setPhotoFile(resizedFile);
-    setPhotoPreview(URL.createObjectURL(resized));
+
+    setPhotoFile(file);
+    setUploadPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setShowIdentifyModal(true);
+
+    setProcessingPhoto(true);
+    try {
+      const resized = await resizeImage(file);
+      const resizedFile = new File([resized], file.name, { type: "image/jpeg" });
+      setUploadPhotoFile(resizedFile);
+    } finally {
+      setProcessingPhoto(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -111,13 +129,27 @@ export default function PlantForm() {
       }
 
       // Upload photo if selected
-      if (photoFile && plantId) {
+      if (uploadPhotoFile && plantId) {
         const form = new FormData();
-        form.append("file", photoFile);
-        await api.post(`/plants/${plantId}/photo`, form);
+        form.append("file", uploadPhotoFile);
+        const res = await api.post<{ photoUrl: string }>(`/plants/${plantId}/photo`, form);
+        const { photoUrl } = res.data;
+
+        await db.plants.update(plantId, { photoUrl });
+
+        qc.setQueryData<Plant | undefined>(["plant", plantId], (current) =>
+          current ? { ...current, photoUrl } : current
+        );
+        qc.setQueryData<Plant[] | undefined>(["plants", activeGardenId], (current) =>
+          current?.map((plant) =>
+            plant.id === plantId ? { ...plant, photoUrl } : plant
+          )
+        );
       }
 
-      navigate(isEdit ? `/plants/${id}` : "/");
+      await qc.invalidateQueries({ queryKey: ["plant", plantId] });
+      await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
+      navigate(isEdit ? `/plants/${id}` : `/plants/${plantId}`);
     } catch {
       toast.error("Erreur lors de la sauvegarde");
     } finally {
@@ -148,6 +180,14 @@ export default function PlantForm() {
           <div className="text-center text-green-600 dark:text-green-400">
             <Camera className="w-10 h-10 mx-auto mb-2" />
             <p className="text-sm font-medium">Ajouter une photo</p>
+          </div>
+        )}
+        {processingPhoto && (
+          <div className="absolute inset-0 bg-black/35 flex items-center justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-black/60 text-white px-3 py-2 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Optimisation de la photo...
+            </div>
           </div>
         )}
         <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 rounded-full p-1.5 shadow">
@@ -241,6 +281,29 @@ export default function PlantForm() {
         {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
         {isEdit ? "Enregistrer les modifications" : "Ajouter la plante"}
       </button>
+
+      {showIdentifyModal && photoFile && (
+        <IdentifyModal
+          imageFile={photoFile}
+          plantName={name.trim() || "cette plante"}
+          onApplyName={(value) => {
+            setName(value);
+            toast.success("Nom applique");
+          }}
+          onApplyDetails={(value) => {
+            setNotes(value);
+            toast.success("Details appliques");
+          }}
+          onApplyPlanning={(planning) => {
+            setWaterByMonth(planning.wateringFreqByMonth);
+            setFertByMonth(planning.fertilizingFreqByMonth);
+            setWaterDays(planning.wateringFreqDays?.toString() ?? "");
+            setFertDays(planning.fertilizingFreqDays?.toString() ?? "");
+            toast.success("Plannings appliques");
+          }}
+          onClose={() => setShowIdentifyModal(false)}
+        />
+      )}
     </div>
   );
 }
