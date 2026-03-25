@@ -24,8 +24,22 @@ export const db = new PlantCareDB();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export async function syncPlantsToLocal(plants: Plant[]) {
-  await db.plants.bulkPut(plants);
+export async function syncPlantsToLocal(plants: Plant[], gardenId?: string) {
+  await db.transaction("rw", db.plants, async () => {
+    if (gardenId) {
+      const incomingIds = new Set(plants.map((plant) => plant.id));
+      const existing = await db.plants.where("gardenId").equals(gardenId).toArray();
+      const staleIds = existing
+        .filter((plant) => !plant._localOnly && !incomingIds.has(plant.id))
+        .map((plant) => plant.id);
+
+      if (staleIds.length > 0) {
+        await db.plants.bulkDelete(staleIds);
+      }
+    }
+
+    await db.plants.bulkPut(plants);
+  });
 }
 
 export async function syncCareEventsToLocal(events: CareEvent[]) {

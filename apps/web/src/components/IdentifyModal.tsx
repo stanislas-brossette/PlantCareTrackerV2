@@ -20,13 +20,13 @@ interface IdentificationResult {
 interface Props {
   plantId: string;
   plantName: string;
-  onAccept: (name: string) => void;
-  onIdentified?: () => void;  // called after successful identification (triggers refetch)
+  onApplied?: () => void;
   onClose: () => void;
 }
 
-export default function IdentifyModal({ plantId, plantName, onAccept, onIdentified, onClose }: Props) {
+export default function IdentifyModal({ plantId, plantName, onApplied, onClose }: Props) {
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState<"name" | "details" | "planning" | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +38,33 @@ export default function IdentifyModal({ plantId, plantName, onAccept, onIdentifi
         `/identify/${plantId}`
       );
       setResult(res.data.identification);
-      onIdentified?.(); // trigger plant refetch in parent
     } catch (err: unknown) {
       const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
       setError(message || "Erreur lors de l'identification");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applySection = async (section: "name" | "details" | "planning") => {
+    if (!result) return;
+    setApplying(section);
+    setError(null);
+    try {
+      await api.patch(`/identify/${plantId}`, {
+        identification: result,
+        apply: {
+          name: section === "name",
+          details: section === "details",
+          planning: section === "planning",
+        },
+      });
+      onApplied?.();
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(message || "Erreur lors de l'application");
+    } finally {
+      setApplying(null);
     }
   };
 
@@ -115,7 +136,9 @@ export default function IdentifyModal({ plantId, plantName, onAccept, onIdentifi
                     <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                       {label}
                     </dt>
-                    <dd className="text-gray-900 dark:text-white text-sm mt-0.5">{result[key]}</dd>
+                    <dd className="whitespace-pre-line text-gray-900 dark:text-white text-sm mt-0.5">
+                      {result[key]}
+                    </dd>
                   </div>
                 ) : null
               )}
@@ -162,8 +185,33 @@ export default function IdentifyModal({ plantId, plantName, onAccept, onIdentifi
         </div>
 
         {/* Footer */}
-        {result?.nom_commun && (
-          <div className="p-4 border-t border-gray-100 dark:border-gray-700 flex gap-2">
+        {result && (
+          <div className="p-4 border-t border-gray-100 dark:border-gray-700 space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                onClick={() => applySection("name")}
+                disabled={!result.nom_commun || applying !== null}
+                className="py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+              >
+                {applying === "name" ? "Application..." : "Appliquer le nom"}
+              </button>
+              <button
+                onClick={() => applySection("details")}
+                disabled={applying !== null}
+                className="py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+              >
+                {applying === "details" ? "Application..." : "Appliquer les détails"}
+              </button>
+              <button
+                onClick={() => applySection("planning")}
+                disabled={applying !== null}
+                className="py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {applying === "planning" ? "Application..." : "Appliquer les plannings"}
+              </button>
+            </div>
+
+            <div className="flex gap-2">
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(JSON.stringify(result, null, 2));
@@ -173,14 +221,12 @@ export default function IdentifyModal({ plantId, plantName, onAccept, onIdentifi
               Copier
             </button>
             <button
-              onClick={() => {
-                if (result.nom_commun) onAccept(result.nom_commun);
-                onClose();
-              }}
-              className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700"
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
             >
-              Accepter le nom
+              Fermer
             </button>
+            </div>
           </div>
         )}
       </div>

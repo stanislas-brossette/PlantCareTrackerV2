@@ -145,10 +145,12 @@ export default function PlantDetail() {
   const recordCare = useRecordCare(activeGardenId);
   const undoCare = useUndoCare(activeGardenId);
 
-  const activePlants = plants.filter((p) => !p.archived);
-  const currentIndex = activePlants.findIndex((p) => p.id === id);
-  const prevPlant = currentIndex > 0 ? activePlants[currentIndex - 1] : null;
-  const nextPlant = currentIndex < activePlants.length - 1 ? activePlants[currentIndex + 1] : null;
+  const siblingPlants = plants.filter((p) =>
+    plant ? p.archived === plant.archived : !p.archived
+  );
+  const currentIndex = siblingPlants.findIndex((p) => p.id === id);
+  const prevPlant = currentIndex > 0 ? siblingPlants[currentIndex - 1] : null;
+  const nextPlant = currentIndex < siblingPlants.length - 1 ? siblingPlants[currentIndex + 1] : null;
 
   const [showIdentify, setShowIdentify] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -171,6 +173,8 @@ export default function PlantDetail() {
     if (!id) return;
     await api.patch(`/plants/${id}`, { archived: !plant?.archived });
     toast.success(plant?.archived ? "Plante restaurée" : "Plante archivée");
+    await qc.invalidateQueries({ queryKey: ["plant", id] });
+    await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
     navigate("/");
   };
 
@@ -181,18 +185,10 @@ export default function PlantDetail() {
     navigate("/");
   };
 
-  const handleAcceptName = async (name: string) => {
-    if (!id) return;
-    await api.patch(`/plants/${id}`, { name });
-    toast.success(`Plante renommée en "${name}"`);
+  const handleIdentificationApplied = () => {
     qc.invalidateQueries({ queryKey: ["plant", id] });
     qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-  };
-
-  const handleIdentified = () => {
-    qc.invalidateQueries({ queryKey: ["plant", id] });
-    qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-    toast.success("Données de la plante mises à jour ✓");
+    toast.success("Modification appliquée ✓");
   };
 
   if (isLoading) {
@@ -408,8 +404,7 @@ export default function PlantDetail() {
         <IdentifyModal
           plantId={plant.id}
           plantName={plant.name}
-          onAccept={handleAcceptName}
-          onIdentified={handleIdentified}
+          onApplied={handleIdentificationApplied}
           onClose={() => setShowIdentify(false)}
         />
       )}

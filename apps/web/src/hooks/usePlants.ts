@@ -13,9 +13,13 @@ export function usePlants(gardenId: string | null) {
   const query = useQuery({
     queryKey: ["plants", gardenId],
     queryFn: async () => {
-      const res = await api.get<Plant[]>("/plants", { params: { gardenId } });
-      await syncPlantsToLocal(res.data);
-      return res.data;
+      const [activeRes, archivedRes] = await Promise.all([
+        api.get<Plant[]>("/plants", { params: { gardenId, archived: false } }),
+        api.get<Plant[]>("/plants", { params: { gardenId, archived: true } }),
+      ]);
+      const merged = [...activeRes.data, ...archivedRes.data];
+      await syncPlantsToLocal(merged, gardenId ?? undefined);
+      return merged;
     },
     enabled: !!gardenId && isOnline,
     staleTime: 30_000,

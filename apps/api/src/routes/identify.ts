@@ -5,6 +5,86 @@ import path from "path";
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
 
+interface IdentificationResult {
+  nom_commun?: string;
+  nom_latin?: string;
+  famille?: string;
+  description?: string;
+  arrosage?: string;
+  arrosage_freq_par_mois?: number[];
+  fertilisation?: string;
+  fertilisation_freq_par_mois?: number[];
+  lumiere?: string;
+  temperature?: string;
+  toxicite?: string;
+  conseils?: string;
+  raw?: string;
+}
+
+function buildNotes(result: IdentificationResult) {
+  return [
+    result.description ?? null,
+    result.nom_latin ? `Nom latin : ${result.nom_latin}` : null,
+    result.famille ? `Famille : ${result.famille}` : null,
+    result.arrosage ? `💧 Arrosage : ${result.arrosage}` : null,
+    result.fertilisation ? `🌿 Fertilisation : ${result.fertilisation}` : null,
+    result.lumiere ? `☀️ Lumière : ${result.lumiere}` : null,
+    result.temperature ? `🌡️ Température : ${result.temperature}` : null,
+    result.toxicite ? `⚠️ Toxicité : ${result.toxicite}` : null,
+    result.conseils ? `💡 Conseils : ${result.conseils}` : null,
+  ].filter(Boolean).join("\n\n");
+}
+
+function buildPlanningUpdate(result: IdentificationResult) {
+  const updateData: Record<string, unknown> = {};
+
+  const waterFreq = result.arrosage_freq_par_mois;
+  if (Array.isArray(waterFreq) && waterFreq.length === 12) {
+    updateData.wateringFreqByMonth = JSON.stringify(waterFreq);
+    const nonZero = waterFreq.filter((value) => value > 0);
+    updateData.wateringFreqDays =
+      nonZero.length > 0
+        ? Math.round(nonZero.reduce((sum, value) => sum + value, 0) / nonZero.length)
+        : null;
+  }
+
+  const fertFreq = result.fertilisation_freq_par_mois;
+  if (Array.isArray(fertFreq) && fertFreq.length === 12) {
+    updateData.fertilizingFreqByMonth = JSON.stringify(fertFreq);
+    const nonZero = fertFreq.filter((value) => value > 0);
+    updateData.fertilizingFreqDays =
+      nonZero.length > 0
+        ? Math.round(nonZero.reduce((sum, value) => sum + value, 0) / nonZero.length)
+        : null;
+  }
+
+  return updateData;
+}
+
+function summarizeAvailableUpdates(result: IdentificationResult) {
+  const details = Boolean(
+    result.description ||
+      result.nom_latin ||
+      result.famille ||
+      result.arrosage ||
+      result.fertilisation ||
+      result.lumiere ||
+      result.temperature ||
+      result.toxicite ||
+      result.conseils
+  );
+
+  return {
+    name: Boolean(result.nom_commun),
+    details,
+    planning: Boolean(
+      (Array.isArray(result.arrosage_freq_par_mois) && result.arrosage_freq_par_mois.length === 12) ||
+        (Array.isArray(result.fertilisation_freq_par_mois) &&
+          result.fertilisation_freq_par_mois.length === 12)
+    ),
+  };
+}
+
 const identifyRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Params: { plantId: string } }>(
     "/:plantId",
@@ -85,69 +165,76 @@ Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
 
       const raw = response.choices[0]?.message?.content ?? "{}";
 
-      let parsed: Record<string, string>;
+      let parsed: IdentificationResult;
       try {
         parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
       } catch {
         parsed = { raw };
       }
 
-      // Auto-rename if plant still has a default name
-      const defaultNamePattern = /^plant\s*\d*$/i;
+      reply.send({
+        identification: parsed,
+        availableUpdates: summarizeAvailableUpdates(parsed),
+      });
+    }
+  );
+
+  fastify.patch<{
+    Params: { plantId: string };
+    Body: {
+      identification: IdentificationResult;
+      apply: {
+        name?: boolean;
+        details?: boolean;
+        planning?: boolean;
+      };
+    };
+  }>(
+    "/:plantId",
+    { preHandler: [fastify.authenticate] },
+    async (req, reply) => {
+      const plant = await fastify.prisma.plant.findUnique({
+        where: { id: req.params.plantId },
+      });
+      if (!plant) return reply.status(404).send({ error: "Plant not found" });
+
+      const member = await fastify.prisma.gardenMember.findUnique({
+        where: { userId_gardenId: { userId: req.userId, gardenId: plant.gardenId } },
+      });
+      if (!member) return reply.status(403).send({ error: "Forbidden" });
+
+      const { identification, apply } = req.body;
       const updateData: Record<string, unknown> = {};
 
-      if (
-        parsed.nom_commun &&
-        (defaultNamePattern.test(plant.name) || plant.name === "Nouvelle plante")
-      ) {
-        updateData.name = parsed.nom_commun;
+      if (apply.name && identification.nom_commun) {
+        updateData.name = identification.nom_commun;
       }
 
-      // Apply monthly frequencies if returned by AI
-      const waterFreq = parsed.arrosage_freq_par_mois;
-      console.log("[identify] arrosage_freq_par_mois:", waterFreq, "isArray:", Array.isArray(waterFreq), "length:", Array.isArray(waterFreq) ? (waterFreq as unknown as number[]).length : "N/A");
-      if (Array.isArray(waterFreq) && (waterFreq as unknown as number[]).length === 12) {
-        updateData.wateringFreqByMonth = JSON.stringify(waterFreq);
-        const nonZero = (waterFreq as unknown as number[]).filter((v) => v > 0);
-        if (nonZero.length > 0) {
-          updateData.wateringFreqDays = Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length);
+      if (apply.details) {
+        const notes = buildNotes(identification);
+        if (notes) {
+          updateData.notes = notes;
         }
       }
 
-      const fertFreq = parsed.fertilisation_freq_par_mois;
-      console.log("[identify] fertilisation_freq_par_mois:", fertFreq, "isArray:", Array.isArray(fertFreq), "length:", Array.isArray(fertFreq) ? (fertFreq as unknown as number[]).length : "N/A");
-      if (Array.isArray(fertFreq) && (fertFreq as unknown as number[]).length === 12) {
-        updateData.fertilizingFreqByMonth = JSON.stringify(fertFreq);
-        const nonZero = (fertFreq as unknown as number[]).filter((v) => v > 0);
-        if (nonZero.length > 0) {
-          updateData.fertilizingFreqDays = Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length);
-        }
+      if (apply.planning) {
+        Object.assign(updateData, buildPlanningUpdate(identification));
       }
 
-      // Save description to notes if not already set (independent of name/frequency changes)
-      if (parsed.description && !plant.notes) {
-        updateData.notes = [
-          parsed.description,
-          parsed.arrosage ? `💧 Arrosage: ${parsed.arrosage}` : null,
-          parsed.lumiere ? `☀️ Lumière: ${parsed.lumiere}` : null,
-          parsed.temperature ? `🌡️ Température: ${parsed.temperature}` : null,
-          parsed.toxicite ? `⚠️ Toxicité: ${parsed.toxicite}` : null,
-          parsed.conseils ? `💡 Conseils: ${parsed.conseils}` : null,
-        ].filter(Boolean).join("\n");
+      if (Object.keys(updateData).length === 0) {
+        return reply.status(400).send({ error: "Nothing to apply" });
       }
 
-      console.log("[identify] updateData keys:", Object.keys(updateData));
-      if (Object.keys(updateData).length > 0) {
-        await fastify.prisma.plant.update({
-          where: { id: plant.id },
-          data: updateData,
-        });
-        console.log("[identify] plant updated successfully");
-      } else {
-        console.log("[identify] nothing to update");
-      }
+      const updatedPlant = await fastify.prisma.plant.update({
+        where: { id: plant.id },
+        data: updateData,
+      });
 
-      reply.send({ identification: parsed });
+      reply.send({
+        ok: true,
+        applied: apply,
+        plantId: updatedPlant.id,
+      });
     }
   );
 };
