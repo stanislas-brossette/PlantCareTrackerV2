@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  password     String
+  name         String?
+  createdAt    DateTime       @default(now())
+  ownedGardens Garden[]
+  memberships  GardenMember[]
+  careEvents   CareEvent[]
+  pushSubs     PushSubscription[]
+}
+
+model Garden {
+  id        String         @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  plants    Plant[]
+  locations Location[]
+  members   GardenMember[]
+  createdAt DateTime       @default(now())
+}
+
+model GardenMember {
+  userId   String
+  gardenId String
+  role     String   @default("VIEWER") // OWNER | EDITOR | VIEWER
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden   Garden   @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+
+  @@id([userId, gardenId])
+}
+
+model Location {
+  id       String  @id @default(cuid())
+  name     String
+  gardenId String
+  garden   Garden  @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  plants   Plant[]
+}
+
+model Plant {
+  id                  String      @id @default(cuid())
+  name                String
+  photoUrl            String?
+  notes               String?
+  wateringFreqDays    Int?
+  fertilizingFreqDays Int?
+  // JSON arrays of 12 values (one per month, Jan=0). Overrides scalar if present.
+  // e.g. "[7,7,7,5,5,4,4,4,5,6,7,7]"
+  wateringFreqByMonth   String?
+  fertilizingFreqByMonth String?
+  archived            Boolean     @default(false)
+  gardenId            String
+  locationId          String?
+  garden              Garden      @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  location            Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  careEvents          CareEvent[]
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model CareEvent {
+  id          String   @id @default(cuid())
+  type        String   // WATERING | FERTILIZING | REPOTTING | PRUNING | TREATMENT | OTHER
+  plantId     String
+  userId      String
+  performedAt DateTime @default(now())
+  note        String?
+  plant       Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id       String @id @default(cuid())
+  userId   String
+  endpoint String @unique
+  p256dh   String
+  auth     String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

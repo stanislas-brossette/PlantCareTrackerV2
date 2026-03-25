@@ -1,0 +1,37 @@
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Database (SQLite)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Uploads (fichiers utilisateurs)
+apps/api/uploads/
+
+# Prisma generated client (se régénère avec prisma generate)
+apps/api/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

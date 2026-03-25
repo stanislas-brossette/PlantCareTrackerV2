@@ -1,0 +1,17 @@
+{
+  "name": "plantcaretracker",
+  "private": true,
+  "version": "2.0.0",
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:seed": "pnpm --filter api db:seed",
+    "db:studio": "pnpm --filter api db:studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
