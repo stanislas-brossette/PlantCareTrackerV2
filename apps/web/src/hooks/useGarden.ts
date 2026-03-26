@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../lib/api";
 import { syncGardensToLocal, syncLocationsToLocal } from "../lib/db";
-import type { Garden, GardenMember, Location } from "@plantcare/shared";
+import type { Garden, GardenMember, InviteMemberBody, Location } from "@plantcare/shared";
 
 export function useGardens() {
   return useQuery({
@@ -49,7 +49,7 @@ export function useMembers(gardenId: string | null) {
 export function useInviteMember(gardenId: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ email, role }: { email: string; role: string }) =>
+    mutationFn: ({ email, role }: InviteMemberBody) =>
       api.post(`/gardens/${gardenId}/members`, { email, role }).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["members", gardenId] }),
   });

@@ -1,4 +1,5 @@
 import { FastifyPluginAsync } from "fastify";
+import { CreatePlantSchema, GardenRole, ROLE_WEIGHT, UpdatePlantSchema } from "@plantcare/shared";
 import { saveImage, deleteImage } from "../utils/images.js";
 import { getEffectiveFreq, parseMonthlyFreq, serializeMonthlyFreq } from "../utils/freq.js";
 
@@ -31,13 +32,12 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
   async function assertGardenAccess(
     gardenId: string,
     userId: string,
-    minRole: "VIEWER" | "EDITOR" | "OWNER" = "VIEWER"
+    minRole: GardenRole = "VIEWER"
   ) {
-    const roleWeight: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };
     const member = await fastify.prisma.gardenMember.findUnique({
       where: { userId_gardenId: { userId, gardenId } },
     });
-    if (!member || roleWeight[member.role] < roleWeight[minRole]) {
+    if (!member || !(member.role in ROLE_WEIGHT) || ROLE_WEIGHT[member.role as GardenRole] < ROLE_WEIGHT[minRole]) {
       throw { statusCode: 403, message: "Insufficient permissions" };
     }
   }
@@ -169,7 +169,17 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
-      const { gardenId, wateringFreqByMonth, fertilizingFreqByMonth, ...rest } = req.body;
+      if (!req.body.gardenId) {
+        return reply.status(400).send({ error: "Invalid plant payload" });
+      }
+
+      const { gardenId, ...body } = req.body;
+      const parsedBody = CreatePlantSchema.safeParse(body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid plant payload" });
+      }
+
+      const { wateringFreqByMonth, fertilizingFreqByMonth, ...rest } = parsedBody.data;
       await assertGardenAccess(gardenId, req.userId, "EDITOR");
 
       const plant = await fastify.prisma.plant.create({
@@ -212,13 +222,18 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
     "/:id",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
+      const parsedBody = UpdatePlantSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid plant payload" });
+      }
+
       const existing = await fastify.prisma.plant.findUnique({
         where: { id: req.params.id },
       });
       if (!existing) return reply.status(404).send({ error: "Not found" });
       await assertGardenAccess(existing.gardenId, req.userId, "EDITOR");
 
-      const { wateringFreqByMonth, fertilizingFreqByMonth, ...rest } = req.body;
+      const { wateringFreqByMonth, fertilizingFreqByMonth, ...rest } = parsedBody.data;
       const plant = await fastify.prisma.plant.update({
         where: { id: req.params.id },
         data: {

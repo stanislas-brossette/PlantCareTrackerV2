@@ -2,6 +2,7 @@ import { useState } from "react";
 import { UserPlus, X } from "lucide-react";
 import { useInviteMember } from "../hooks/useGarden";
 import toast from "react-hot-toast";
+import type { EditableGardenRole } from "@plantcare/shared";
 
 interface Props {
   gardenId: string;
@@ -10,7 +11,7 @@ interface Props {
 
 export default function InviteModal({ gardenId, onClose }: Props) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("EDITOR");
+  const [role, setRole] = useState<EditableGardenRole>("EDITOR");
   const invite = useInviteMember(gardenId);
 
   const handleSubmit = async () => {
@@ -58,7 +59,7 @@ export default function InviteModal({ gardenId, onClose }: Props) {
             </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => setRole(e.target.value as EditableGardenRole)}
               className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
             >
               <option value="EDITOR">Éditeur (peut modifier)</option>

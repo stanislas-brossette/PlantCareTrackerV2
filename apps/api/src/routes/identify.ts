@@ -21,6 +21,34 @@ interface IdentificationResult {
   raw?: string;
 }
 
+const LOW_WATER_KEYWORDS = [
+  "zamioculcas",
+  "zamiifolia",
+  "zz plant",
+  "sansevieria",
+  "snake plant",
+  "succulent",
+  "succulente",
+  "cactus",
+  "crassula",
+  "haworthia",
+  "aloe",
+  "tolere la secheresse",
+  "tolere la sécheresse",
+  "peu d'eau",
+  "peu d eau",
+  "sol sec",
+  "laisser secher",
+  "laisser sécher",
+  "completement sec",
+  "complètement sec",
+  "dry between waterings",
+  "drought",
+];
+
+const LOW_WATER_WATERING_FLOOR = [28, 28, 21, 18, 14, 14, 14, 14, 18, 21, 28, 28];
+const LOW_WATER_FERTILIZING_MONTHS = new Set([2, 3, 4, 5, 6, 7, 8]);
+
 function buildNotes(result: IdentificationResult) {
   return [
     result.description ?? null,
@@ -33,6 +61,68 @@ function buildNotes(result: IdentificationResult) {
     result.toxicite ? `⚠️ Toxicité : ${result.toxicite}` : null,
     result.conseils ? `💡 Conseils : ${result.conseils}` : null,
   ].filter(Boolean).join("\n\n");
+}
+
+function normalizeMonthlyFrequency(
+  values: unknown,
+  { max }: { max: number }
+): number[] | undefined {
+  if (!Array.isArray(values) || values.length !== 12) return undefined;
+
+  return values.map((value) => {
+    if (typeof value !== "number" || Number.isNaN(value)) return 0;
+    return Math.max(0, Math.min(max, Math.round(value)));
+  });
+}
+
+function isLowWaterPlant(result: IdentificationResult) {
+  const haystack = [
+    result.nom_commun,
+    result.nom_latin,
+    result.description,
+    result.arrosage,
+    result.conseils,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+
+  return LOW_WATER_KEYWORDS.some((keyword) => haystack.includes(keyword));
+}
+
+function normalizeIdentificationResult(result: IdentificationResult): IdentificationResult {
+  const normalized: IdentificationResult = { ...result };
+
+  const watering = normalizeMonthlyFrequency(result.arrosage_freq_par_mois, { max: 90 });
+  const fertilizing = normalizeMonthlyFrequency(result.fertilisation_freq_par_mois, { max: 120 });
+
+  if (watering) {
+    normalized.arrosage_freq_par_mois = watering;
+  }
+
+  if (fertilizing) {
+    normalized.fertilisation_freq_par_mois = fertilizing;
+  }
+
+  if (isLowWaterPlant(normalized)) {
+    if (normalized.arrosage_freq_par_mois) {
+      normalized.arrosage_freq_par_mois = normalized.arrosage_freq_par_mois.map((value, month) =>
+        value === 0 ? 0 : Math.max(value, LOW_WATER_WATERING_FLOOR[month])
+      );
+    }
+
+    if (normalized.fertilisation_freq_par_mois) {
+      normalized.fertilisation_freq_par_mois = normalized.fertilisation_freq_par_mois.map(
+        (value, month) => {
+          if (!LOW_WATER_FERTILIZING_MONTHS.has(month)) return 0;
+          if (value === 0) return 0;
+          return Math.max(value, 30);
+        }
+      );
+    }
+  }
+
+  return normalized;
 }
 
 function buildPlanningUpdate(result: IdentificationResult) {
@@ -127,7 +217,11 @@ async function analyzeImageBuffer(imageBuffer: Buffer) {
   "toxicite": "...",
   "conseils": "..."
 }
-Pour les tableaux de fréquences: 12 valeurs entières (Jan à Déc), en nombre de JOURS entre chaque soin. Mettre 0 si le soin n'est pas recommandé ce mois-ci (ex: pas de fertilisation en hiver).
+Pour les tableaux de fréquences: 12 valeurs entières (Jan à Déc), en nombre de JOURS ENTRE CHAQUE SOIN. Plus le nombre est grand, moins le soin est fréquent. Mettre 0 si le soin n'est pas recommandé ce mois-ci.
+Sois réaliste et plutôt conservateur. Pour les plantes d'intérieur sobres en eau ou tolérantes à la sécheresse (par ex. Zamioculcas, Sansevieria, succulentes, cactus), évite les fréquences trop agressives:
+- arrosage souvent de l'ordre de 14 à 30+ jours selon la saison, plus espacé en hiver
+- fertilisation généralement absente en hiver, puis espacée au printemps/été
+N'utilise des arrosages tous les 4 à 7 jours que pour des plantes qui en ont réellement besoin.
 Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
           },
         ],
@@ -137,7 +231,9 @@ Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
 
   const raw = response.choices[0]?.message?.content ?? "{}";
   try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim()) as IdentificationResult;
+    return normalizeIdentificationResult(
+      JSON.parse(raw.replace(/```json|```/g, "").trim()) as IdentificationResult
+    );
   } catch {
     return { raw } satisfies IdentificationResult;
   }

@@ -1,16 +1,16 @@
 import { FastifyPluginAsync } from "fastify";
+import { CreateLocationSchema, GardenRole, ROLE_WEIGHT } from "@plantcare/shared";
 
 const locationRoutes: FastifyPluginAsync = async (fastify) => {
   async function assertGardenAccess(
     gardenId: string,
     userId: string,
-    minRole: "VIEWER" | "EDITOR" | "OWNER" = "VIEWER"
+    minRole: GardenRole = "VIEWER"
   ) {
-    const roleWeight: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };
     const member = await fastify.prisma.gardenMember.findUnique({
       where: { userId_gardenId: { userId, gardenId } },
     });
-    if (!member || roleWeight[member.role] < roleWeight[minRole]) {
+    if (!member || !(member.role in ROLE_WEIGHT) || ROLE_WEIGHT[member.role as GardenRole] < ROLE_WEIGHT[minRole]) {
       throw { statusCode: 403, message: "Insufficient permissions" };
     }
   }
@@ -38,7 +38,13 @@ const locationRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
-      const { gardenId, name } = req.body;
+      const parsedBody = CreateLocationSchema.safeParse({ name: req.body.name });
+      if (!parsedBody.success || !req.body.gardenId) {
+        return reply.status(400).send({ error: "Invalid location payload" });
+      }
+
+      const { gardenId } = req.body;
+      const { name } = parsedBody.data;
       await assertGardenAccess(gardenId, req.userId, "EDITOR");
 
       const existing = await fastify.prisma.location.findFirst({

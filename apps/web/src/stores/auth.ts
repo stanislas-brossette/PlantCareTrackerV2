@@ -8,6 +8,7 @@ interface AuthState {
   accessToken: string | null;
   activeGardenId: string | null;
   setAuth: (user: User, token: string) => void;
+  setUser: (user: User) => void;
   setActiveGarden: (gardenId: string) => void;
   logout: () => void;
 }
@@ -23,6 +24,8 @@ export const useAuthStore = create<AuthState>()(
         setAccessToken(accessToken);
         set({ user, accessToken });
       },
+
+      setUser: (user) => set({ user }),
 
       setActiveGarden: (gardenId) => set({ activeGardenId: gardenId }),
 

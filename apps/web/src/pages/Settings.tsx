@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Users, MapPin, Bell, BellOff, Plus, Trash2,
   ChevronRight, Moon, Sun, UserCircle, Loader2,
@@ -6,12 +6,12 @@ import {
 import { useGardens, useMembers, useRemoveMember, useLocations, useCreateLocation, useDeleteLocation } from "../hooks/useGarden";
 import { useAuthStore } from "../stores/auth";
 import InviteModal from "../components/InviteModal";
-import { subscribeToPush, unsubscribeFromPush } from "../lib/notifications";
+import { isPushSubscribed, subscribeToPush, unsubscribeFromPush } from "../lib/notifications";
 import toast from "react-hot-toast";
 import api from "../lib/api";
 
 export default function Settings() {
-  const { user, activeGardenId, setActiveGarden } = useAuthStore();
+  const { user, activeGardenId, setActiveGarden, setUser } = useAuthStore();
   const { data: gardens = [] } = useGardens();
   const { data: members = [] } = useMembers(activeGardenId);
   const { data: locations = [] } = useLocations(activeGardenId);
@@ -28,6 +28,28 @@ export default function Settings() {
   const [darkMode, setDarkMode] = useState(() =>
     document.documentElement.classList.contains("dark")
   );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncPushState() {
+      try {
+        const subscribed = await isPushSubscribed();
+        if (!cancelled) {
+          setPushEnabled(subscribed);
+        }
+      } catch {
+        if (!cancelled) {
+          setPushEnabled(false);
+        }
+      }
+    }
+
+    syncPushState();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggleDark = () => {
     document.documentElement.classList.toggle("dark");
@@ -69,7 +91,8 @@ export default function Settings() {
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     try {
-      await api.patch("/auth/me", { name });
+      const res = await api.patch("/auth/me", { name });
+      setUser(res.data);
       toast.success("Profil mis à jour");
     } catch {
       toast.error("Erreur");

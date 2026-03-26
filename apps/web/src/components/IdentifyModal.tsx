@@ -217,8 +217,11 @@ export default function IdentifyModal(props: Props) {
               {result.arrosage_freq_par_mois ? (
                 <div>
                   <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                    💧 Fréq. arrosage (j/mois)
+                    💧 Arrosage
                   </dt>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Nombre de jours entre deux arrosages, mois par mois.
+                  </p>
                   <dd className="mt-1 grid grid-cols-12 gap-0.5 text-center">
                     {monthLabels.map((month, index) => (
                       <div key={index} className="flex flex-col items-center">
@@ -237,8 +240,11 @@ export default function IdentifyModal(props: Props) {
               {result.fertilisation_freq_par_mois ? (
                 <div>
                   <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                    🌿 Fréq. fertilisation (j/mois)
+                    🌿 Fertilisation
                   </dt>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Nombre de jours entre deux fertilisations, mois par mois.
+                  </p>
                   <dd className="mt-1 grid grid-cols-12 gap-0.5 text-center">
                     {monthLabels.map((month, index) => (
                       <div key={index} className="flex flex-col items-center">

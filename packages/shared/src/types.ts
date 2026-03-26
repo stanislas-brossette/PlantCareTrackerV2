@@ -1,14 +1,5 @@
-// ─── Enums ────────────────────────────────────────────────────────────────────
-
-export type CareType =
-  | "WATERING"
-  | "FERTILIZING"
-  | "REPOTTING"
-  | "PRUNING"
-  | "TREATMENT"
-  | "OTHER";
-
-export type GardenRole = "OWNER" | "EDITOR" | "VIEWER";
+export type { CareType, EditableGardenRole, GardenRole } from "./schemas";
+import type { CareType, GardenRole } from "./schemas";
 
 // ─── Domain models ────────────────────────────────────────────────────────────
 

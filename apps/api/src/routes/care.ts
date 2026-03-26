@@ -1,19 +1,19 @@
 import { FastifyPluginAsync } from "fastify";
+import { CareTypeSchema, GardenRole, ROLE_WEIGHT } from "@plantcare/shared";
 
 const careRoutes: FastifyPluginAsync = async (fastify) => {
   async function assertPlantAccess(
     plantId: string,
     userId: string,
-    minRole: "VIEWER" | "EDITOR" | "OWNER" = "VIEWER"
+    minRole: GardenRole = "VIEWER"
   ) {
-    const roleWeight: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };
     const plant = await fastify.prisma.plant.findUnique({ where: { id: plantId } });
     if (!plant) throw { statusCode: 404, message: "Plant not found" };
 
     const member = await fastify.prisma.gardenMember.findUnique({
       where: { userId_gardenId: { userId, gardenId: plant.gardenId } },
     });
-    if (!member || roleWeight[member.role] < roleWeight[minRole]) {
+    if (!member || !(member.role in ROLE_WEIGHT) || ROLE_WEIGHT[member.role as GardenRole] < ROLE_WEIGHT[minRole]) {
       throw { statusCode: 403, message: "Insufficient permissions" };
     }
     return plant;
@@ -91,16 +91,24 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
+      const parsedType = CareTypeSchema.safeParse(req.body.type);
+      if (!parsedType.success) {
+        return reply.status(400).send({ error: "Invalid care type" });
+      }
+
+      const performedAt = req.body.performedAt ? new Date(req.body.performedAt) : new Date();
+      if (Number.isNaN(performedAt.getTime())) {
+        return reply.status(400).send({ error: "Invalid performedAt date" });
+      }
+
       await assertPlantAccess(req.body.plantId, req.userId, "EDITOR");
 
       const event = await fastify.prisma.careEvent.create({
         data: {
-          type: req.body.type,
+          type: parsedType.data,
           plantId: req.body.plantId,
           userId: req.userId,
-          performedAt: req.body.performedAt
-            ? new Date(req.body.performedAt)
-            : new Date(),
+          performedAt,
           note: req.body.note ?? null,
         },
         include: {
@@ -119,10 +127,14 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       const { plantId, type } = req.query;
+      const parsedType = CareTypeSchema.safeParse(type);
+      if (!parsedType.success) {
+        return reply.status(400).send({ error: "Invalid care type" });
+      }
       await assertPlantAccess(plantId, req.userId, "EDITOR");
 
       const last = await fastify.prisma.careEvent.findFirst({
-        where: { plantId, type, userId: req.userId },
+        where: { plantId, type: parsedType.data, userId: req.userId },
         orderBy: { performedAt: "desc" },
       });
       if (!last) return reply.status(404).send({ error: "Nothing to undo" });

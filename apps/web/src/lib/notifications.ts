@@ -31,6 +31,13 @@ export async function subscribeToPush(): Promise<boolean> {
   return true;
 }
 
+export async function isPushSubscribed(): Promise<boolean> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  return Boolean(subscription);
+}
+
 async function sendSubToServer(sub: PushSubscription) {
   const json = sub.toJSON();
   await api.post("/push/subscribe", {

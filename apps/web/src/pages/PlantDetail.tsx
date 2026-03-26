@@ -154,6 +154,8 @@ export default function PlantDetail() {
 
   const [showIdentify, setShowIdentify] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [careNote, setCareNote] = useState("");
 
   const handleCare = async (type: CareType) => {
@@ -179,15 +181,23 @@ export default function PlantDetail() {
   };
 
   const handleDelete = async () => {
-    if (!id || !confirm("Supprimer définitivement cette plante ?")) return;
-    await api.delete(`/plants/${id}`);
-    qc.removeQueries({ queryKey: ["plant", id] });
-    qc.setQueryData(["plants", activeGardenId], (current: typeof plants | undefined) =>
-      current?.filter((plant) => plant.id !== id)
-    );
-    await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-    toast.success("Plante supprimée");
-    navigate("/");
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/plants/${id}`);
+      qc.removeQueries({ queryKey: ["plant", id] });
+      qc.setQueryData(["plants", activeGardenId], (current: typeof plants | undefined) =>
+        current?.filter((plant) => plant.id !== id)
+      );
+      await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
+      toast.success("Plante supprimée");
+      navigate("/");
+    } catch {
+      toast.error("Erreur lors de la suppression");
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const handleIdentificationApplied = () => {
@@ -242,12 +252,13 @@ export default function PlantDetail() {
             {plant.name}
           </h1>
           <div className="relative">
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
-            >
-              <MoreVertical className="w-5 h-5" />
-            </button>
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
+            aria-label="Ouvrir le menu de la plante"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
             {showMenu && (
               <div className="absolute right-0 top-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg z-10 min-w-40">
                 <Link
@@ -267,13 +278,18 @@ export default function PlantDetail() {
                 <button
                   onClick={handleArchive}
                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  aria-label={plant.archived ? "Restaurer la plante" : "Archiver la plante"}
                 >
                   <RefreshCw className="w-4 h-4" />
                   {plant.archived ? "Restaurer" : "Archiver"}
                 </button>
                 <button
-                  onClick={handleDelete}
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowDeleteConfirm(true);
+                  }}
                   className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-xl"
+                  aria-label="Supprimer la plante"
                 >
                   <Trash2 className="w-4 h-4" /> Supprimer
                 </button>
@@ -412,6 +428,37 @@ export default function PlantDetail() {
           onApplied={handleIdentificationApplied}
           onClose={() => setShowIdentify(false)}
         />
+      )}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700">
+            <div className="p-4 space-y-2">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
+                Supprimer cette plante ?
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Cette action est définitive. La plante et sa photo seront supprimées.
+              </p>
+            </div>
+            <div className="p-4 pt-0 flex gap-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Suppression..." : "Supprimer"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

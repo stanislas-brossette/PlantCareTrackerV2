@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
@@ -56,5 +56,38 @@ export default defineConfig({
       "/api": { target: "http://localhost:3000", changeOrigin: true },
       "/uploads": { target: "http://localhost:3000", changeOrigin: true },
     },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (
+            id.includes("recharts") ||
+            id.includes("d3-") ||
+            id.includes("internmap")
+          ) {
+            return "charts-vendor";
+          }
+
+          if (id.includes("@tanstack/react-query")) {
+            return "query-vendor";
+          }
+
+          if (id.includes("react-router") || id.includes("react-dom") || id.includes("/react/")) {
+            return "react-vendor";
+          }
+        },
+      },
+    },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.ts",
+    css: true,
+    restoreMocks: true,
+    exclude: ["e2e/**", "node_modules/**"],
   },
 });

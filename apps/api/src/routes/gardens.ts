@@ -1,18 +1,23 @@
 import { FastifyPluginAsync } from "fastify";
+import {
+  CreateGardenSchema,
+  EDITABLE_GARDEN_ROLES,
+  GardenRole,
+  InviteMemberSchema,
+  ROLE_WEIGHT,
+  UpdateGardenMemberRoleSchema,
+} from "@plantcare/shared";
 
 const gardenRoutes: FastifyPluginAsync = async (fastify) => {
-  // Helper: assert user has access to garden with minimum role
-  const roleWeight: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };
-
   async function assertGardenAccess(
     gardenId: string,
     userId: string,
-    minRole: "VIEWER" | "EDITOR" | "OWNER" = "VIEWER"
+    minRole: GardenRole = "VIEWER"
   ) {
     const member = await fastify.prisma.gardenMember.findUnique({
       where: { userId_gardenId: { userId, gardenId } },
     });
-    if (!member || roleWeight[member.role] < roleWeight[minRole]) {
+    if (!member || !(member.role in ROLE_WEIGHT) || ROLE_WEIGHT[member.role as GardenRole] < ROLE_WEIGHT[minRole]) {
       throw { statusCode: 403, message: "Insufficient permissions" };
     }
     return member;
@@ -45,9 +50,14 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
+      const parsedBody = CreateGardenSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid garden payload" });
+      }
+
       const garden = await fastify.prisma.garden.create({
         data: {
-          name: req.body.name,
+          name: parsedBody.data.name,
           ownerId: req.userId,
           members: { create: { userId: req.userId, role: "OWNER" } },
         },
@@ -83,10 +93,15 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
     "/:id",
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
+      const parsedBody = CreateGardenSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid garden payload" });
+      }
+
       await assertGardenAccess(req.params.id, req.userId, "OWNER");
       const garden = await fastify.prisma.garden.update({
         where: { id: req.params.id },
-        data: { name: req.body.name },
+        data: { name: parsedBody.data.name },
       });
       reply.send(garden);
     }
@@ -126,9 +141,19 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       await assertGardenAccess(req.params.id, req.userId, "OWNER");
+      if (
+        req.body.role !== undefined &&
+        !EDITABLE_GARDEN_ROLES.includes(req.body.role as (typeof EDITABLE_GARDEN_ROLES)[number])
+      ) {
+        return reply.status(400).send({ error: "Invalid role" });
+      }
+      const parsedBody = InviteMemberSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid member payload" });
+      }
 
       const invitee = await fastify.prisma.user.findUnique({
-        where: { email: req.body.email },
+        where: { email: parsedBody.data.email },
       });
       if (!invitee) {
         return reply.status(404).send({ error: "User not found. They must register first." });
@@ -145,7 +170,7 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
         data: {
           userId: invitee.id,
           gardenId: req.params.id,
-          role: req.body.role || "VIEWER",
+          role: parsedBody.data.role,
         },
         include: { user: { select: { id: true, email: true, name: true } } },
       });
@@ -162,6 +187,15 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       await assertGardenAccess(req.params.id, req.userId, "OWNER");
+      if (
+        !EDITABLE_GARDEN_ROLES.includes(req.body.role as (typeof EDITABLE_GARDEN_ROLES)[number])
+      ) {
+        return reply.status(400).send({ error: "Invalid role" });
+      }
+      const parsedBody = UpdateGardenMemberRoleSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        return reply.status(400).send({ error: "Invalid member payload" });
+      }
 
       if (req.params.userId === req.userId) {
         return reply.status(400).send({ error: "Cannot change your own role" });
@@ -174,7 +208,7 @@ const gardenRoutes: FastifyPluginAsync = async (fastify) => {
             gardenId: req.params.id,
           },
         },
-        data: { role: req.body.role },
+        data: { role: parsedBody.data.role },
         include: { user: { select: { id: true, email: true, name: true } } },
       });
       reply.send(member);
