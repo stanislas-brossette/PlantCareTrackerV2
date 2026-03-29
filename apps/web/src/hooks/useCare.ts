@@ -1,4 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
 import api from "../lib/api";
 import { db, queueAction, syncCareEventsToLocal } from "../lib/db";
 import { useOfflineStore } from "../stores/offline";
@@ -6,19 +7,28 @@ import type { CareEvent, CareType } from "@plantcare/shared";
 
 export function useCareEvents(plantId: string | undefined) {
   const isOnline = useOfflineStore((s) => s.isOnline);
+  const localEvents =
+    useLiveQuery(
+      () => (plantId ? db.careEvents.where("plantId").equals(plantId).reverse().sortBy("performedAt") : []),
+      [plantId]
+    ) ?? [];
 
   return useQuery({
     queryKey: ["care", plantId],
     queryFn: async () => {
+      if (!isOnline) {
+        return localEvents;
+      }
       const res = await api.get<CareEvent[]>(`/care/plant/${plantId}`);
       await syncCareEventsToLocal(res.data);
       return res.data;
     },
-    enabled: !!plantId && isOnline,
+    enabled: !!plantId,
+    initialData: localEvents,
   });
 }
 
-export function useRecordCare(gardenId: string | null) {
+export function useRecordCare() {
   const qc = useQueryClient();
   const isOnline = useOfflineStore((s) => s.isOnline);
 
@@ -35,7 +45,6 @@ export function useRecordCare(gardenId: string | null) {
       const performedAt = new Date().toISOString();
 
       if (!isOnline) {
-        // Optimistic local update
         const tempEvent: CareEvent = {
           id: crypto.randomUUID(),
           type,
@@ -46,7 +55,6 @@ export function useRecordCare(gardenId: string | null) {
         };
         await db.careEvents.add({ ...tempEvent, _localOnly: true });
 
-        // Update plant's computed fields locally
         const plant = await db.plants.get(plantId);
         if (plant) {
           const updates: Partial<typeof plant> = {};
@@ -70,20 +78,19 @@ export function useRecordCare(gardenId: string | null) {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["care", variables.plantId] });
-      qc.invalidateQueries({ queryKey: ["plants", gardenId] });
+      qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["plant", variables.plantId] });
     },
   });
 }
 
-export function useUndoCare(gardenId: string | null) {
+export function useUndoCare() {
   const qc = useQueryClient();
   const isOnline = useOfflineStore((s) => s.isOnline);
 
   return useMutation({
     mutationFn: async ({ plantId, type }: { plantId: string; type: CareType }) => {
       if (!isOnline) {
-        // Remove the last local event of this type
         const events = await db.careEvents
           .where("plantId")
           .equals(plantId)
@@ -102,32 +109,8 @@ export function useUndoCare(gardenId: string | null) {
     },
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["care", variables.plantId] });
-      qc.invalidateQueries({ queryKey: ["plants", gardenId] });
+      qc.invalidateQueries({ queryKey: ["plants"] });
       qc.invalidateQueries({ queryKey: ["plant", variables.plantId] });
     },
-  });
-}
-
-export function useCalendar(gardenId: string | null, from: string, to: string) {
-  return useQuery({
-    queryKey: ["calendar", gardenId, from, to],
-    queryFn: async () => {
-      const res = await api.get<CareEvent[]>("/care/calendar", {
-        params: { gardenId, from, to },
-      });
-      return res.data;
-    },
-    enabled: !!gardenId,
-  });
-}
-
-export function useStats(gardenId: string | null) {
-  return useQuery({
-    queryKey: ["stats", gardenId],
-    queryFn: async () => {
-      const res = await api.get("/care/stats", { params: { gardenId } });
-      return res.data;
-    },
-    enabled: !!gardenId,
   });
 }

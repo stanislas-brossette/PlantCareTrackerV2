@@ -1,20 +1,18 @@
 import Dexie, { Table } from "dexie";
-import type { Plant, CareEvent, Location, Garden, PendingAction } from "@plantcare/shared";
+import type { BootstrapPayload, CareEvent, LocalPlant, Location, PendingAction } from "@plantcare/shared";
 
 export class PlantCareDB extends Dexie {
-  plants!: Table<Plant & { _localOnly?: boolean }>;
+  plants!: Table<LocalPlant>;
   careEvents!: Table<CareEvent & { _localOnly?: boolean }>;
   locations!: Table<Location>;
-  gardens!: Table<Garden>;
   pendingActions!: Table<PendingAction>;
 
   constructor() {
     super("PlantCareDB");
-    this.version(1).stores({
+    this.version(2).stores({
       plants: "id, gardenId, locationId, archived, name",
       careEvents: "id, plantId, type, performedAt, userId",
       locations: "id, gardenId",
-      gardens: "id",
       pendingActions: "id, createdAt",
     });
   }
@@ -22,24 +20,19 @@ export class PlantCareDB extends Dexie {
 
 export const db = new PlantCareDB();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-export async function syncPlantsToLocal(plants: Plant[], gardenId?: string) {
-  await db.transaction("rw", db.plants, async () => {
-    if (gardenId) {
-      const incomingIds = new Set(plants.map((plant) => plant.id));
-      const existing = await db.plants.where("gardenId").equals(gardenId).toArray();
-      const staleIds = existing
-        .filter((plant) => !plant._localOnly && !incomingIds.has(plant.id))
-        .map((plant) => plant.id);
-
-      if (staleIds.length > 0) {
-        await db.plants.bulkDelete(staleIds);
-      }
-    }
-
-    await db.plants.bulkPut(plants);
+export async function hydrateBootstrapToLocal(snapshot: BootstrapPayload) {
+  await db.transaction("rw", db.plants, db.locations, db.careEvents, async () => {
+    await db.plants.clear();
+    await db.locations.clear();
+    await db.careEvents.clear();
+    await db.plants.bulkPut(snapshot.plants as LocalPlant[]);
+    await db.locations.bulkPut(snapshot.locations);
+    await db.careEvents.bulkPut(snapshot.careEvents);
   });
+}
+
+export async function syncPlantsToLocal(plants: LocalPlant[]) {
+  await db.plants.bulkPut(plants);
 }
 
 export async function syncCareEventsToLocal(events: CareEvent[]) {
@@ -50,10 +43,6 @@ export async function syncLocationsToLocal(locations: Location[]) {
   await db.locations.bulkPut(locations);
 }
 
-export async function syncGardensToLocal(gardens: Garden[]) {
-  await db.gardens.bulkPut(gardens);
-}
-
 export async function queueAction(action: PendingAction["action"]) {
   const id = crypto.randomUUID();
   await db.pendingActions.add({
@@ -61,10 +50,28 @@ export async function queueAction(action: PendingAction["action"]) {
     action,
     createdAt: new Date().toISOString(),
     retries: 0,
+    lastError: null,
   });
   return id;
 }
 
 export async function removeAction(id: string) {
   await db.pendingActions.delete(id);
+}
+
+export async function getLocalSnapshotInfo() {
+  const [plantCount, locationCount, careEventCount, firstPlant] = await Promise.all([
+    db.plants.count(),
+    db.locations.count(),
+    db.careEvents.count(),
+    db.plants.orderBy("createdAt").first(),
+  ]);
+
+  return {
+    hasLocalData: plantCount > 0 || locationCount > 0 || careEventCount > 0,
+    plantCount,
+    locationCount,
+    careEventCount,
+    firstPlant,
+  };
 }

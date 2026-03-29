@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import type { Plant } from "@plantcare/shared";
+import type { LocalPlant } from "@plantcare/shared";
+import { resolveAssetUrl } from "../lib/serverConfig";
 
 interface Props {
-  plant: Plant;
+  plant: LocalPlant;
   onWater: () => void;
   onFertilize: () => void;
 }
@@ -38,6 +39,8 @@ function StatusBadge({
 }
 
 export default function PlantCard({ plant, onWater, onFertilize }: Props) {
+  const displayPhoto = plant.cachedPhotoUrl || resolveAssetUrl(plant.photoUrl);
+
   return (
     <div className="flex h-16 bg-white dark:bg-gray-800 rounded-xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700">
       {/* Photo + Nom */}
@@ -45,9 +48,9 @@ export default function PlantCard({ plant, onWater, onFertilize }: Props) {
         to={`/plants/${plant.id}`}
         className="relative w-48 flex-shrink-0 block"
       >
-        {plant.photoUrl ? (
+        {displayPhoto ? (
           <img
-            src={plant.photoUrl}
+            src={displayPhoto}
             alt={plant.name}
             className="w-full h-full object-cover"
             loading="lazy"

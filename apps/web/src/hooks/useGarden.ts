@@ -1,97 +1,68 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLiveQuery } from "dexie-react-hooks";
 import api from "../lib/api";
-import { syncGardensToLocal, syncLocationsToLocal } from "../lib/db";
-import type { Garden, GardenMember, InviteMemberBody, Location } from "@plantcare/shared";
+import { db, queueAction, syncLocationsToLocal } from "../lib/db";
+import { useOfflineStore } from "../stores/offline";
+import type { Location } from "@plantcare/shared";
 
-export function useGardens() {
-  return useQuery({
-    queryKey: ["gardens"],
+export function useLocations() {
+  const isOnline = useOfflineStore((s) => s.isOnline);
+
+  const query = useQuery({
+    queryKey: ["locations"],
     queryFn: async () => {
-      const res = await api.get<Garden[]>("/gardens");
-      await syncGardensToLocal(res.data);
-      return res.data;
-    },
-  });
-}
-
-export function useGarden(id: string | null) {
-  return useQuery({
-    queryKey: ["garden", id],
-    queryFn: async () => {
-      const res = await api.get<Garden & { members: GardenMember[]; locations: Location[] }>(
-        `/gardens/${id}`
-      );
-      return res.data;
-    },
-    enabled: !!id,
-  });
-}
-
-export function useCreateGarden() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => api.post<Garden>("/gardens", { name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["gardens"] }),
-  });
-}
-
-export function useMembers(gardenId: string | null) {
-  return useQuery({
-    queryKey: ["members", gardenId],
-    queryFn: async () => {
-      const res = await api.get<GardenMember[]>(`/gardens/${gardenId}/members`);
-      return res.data;
-    },
-    enabled: !!gardenId,
-  });
-}
-
-export function useInviteMember(gardenId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ email, role }: InviteMemberBody) =>
-      api.post(`/gardens/${gardenId}/members`, { email, role }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", gardenId] }),
-  });
-}
-
-export function useRemoveMember(gardenId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) =>
-      api.delete(`/gardens/${gardenId}/members/${userId}`).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["members", gardenId] }),
-  });
-}
-
-export function useLocations(gardenId: string | null) {
-  return useQuery({
-    queryKey: ["locations", gardenId],
-    queryFn: async () => {
-      const res = await api.get<Location[]>("/locations", { params: { gardenId } });
+      const res = await api.get<Location[]>("/locations");
       await syncLocationsToLocal(res.data);
       return res.data;
     },
-    enabled: !!gardenId,
+    enabled: isOnline,
+  });
+
+  const localLocations = useLiveQuery(() => db.locations.toArray(), []) ?? [];
+  return {
+    data: isOnline ? query.data ?? localLocations : localLocations,
+    isLoading: query.isLoading,
+  };
+}
+
+export function useCreateLocation() {
+  const qc = useQueryClient();
+  const isOnline = useOfflineStore((s) => s.isOnline);
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      if (!isOnline) {
+        const location = {
+          id: crypto.randomUUID(),
+          name,
+          gardenId: "local-garden",
+        };
+        await db.locations.add(location);
+        await queueAction({ kind: "CREATE_LOCATION", payload: { name } });
+        return location;
+      }
+      return api.post<Location>("/locations", { name }).then((r) => r.data);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["locations"] }),
   });
 }
 
-export function useCreateLocation(gardenId: string | null) {
+export function useDeleteLocation() {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) =>
-      api.post<Location>("/locations", { gardenId, name }).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["locations", gardenId] }),
-  });
-}
+  const isOnline = useOfflineStore((s) => s.isOnline);
 
-export function useDeleteLocation(gardenId: string | null) {
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/locations/${id}`).then((r) => r.data),
+    mutationFn: async (id: string) => {
+      await db.locations.delete(id);
+      if (isOnline) {
+        await api.delete(`/locations/${id}`);
+      } else {
+        await queueAction({ kind: "DELETE_LOCATION", payload: { id } });
+      }
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["locations", gardenId] });
-      qc.invalidateQueries({ queryKey: ["plants", gardenId] });
+      qc.invalidateQueries({ queryKey: ["locations"] });
+      qc.invalidateQueries({ queryKey: ["plants"] });
     },
   });
 }

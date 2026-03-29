@@ -1,18 +1,16 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
-import { usePlant, usePlants } from "../hooks/usePlants";
-import { useLocations, useCreateLocation } from "../hooks/useGarden";
-import { useAuthStore } from "../stores/auth";
+import toast from "react-hot-toast";
 import MonthlyFreqEditor from "../components/MonthlyFreqEditor";
 import IdentifyModal from "../components/IdentifyModal";
-import toast from "react-hot-toast";
-import api from "../lib/api";
-import { db } from "../lib/db";
-import type { Plant } from "@plantcare/shared";
+import { usePlant, usePlants } from "../hooks/usePlants";
+import { useCreateLocation, useLocations } from "../hooks/useGarden";
+import { db, queueAction } from "../lib/db";
+import { uploadPhotoDataUrl as uploadPhotoAsset } from "../lib/photos";
+import { useOfflineStore } from "../stores/offline";
 
-function resizeImage(file: File, maxSize = 600): Promise<Blob> {
+function resizeImage(file: File, maxSize = 800): Promise<Blob> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -28,17 +26,28 @@ function resizeImage(file: File, maxSize = 600): Promise<Blob> {
   });
 }
 
+function fileToDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Failed to read file"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function PlantForm() {
   const { id } = useParams<{ id?: string }>();
-  const isEdit = id && id !== "new";
+  const isEdit = Boolean(id && id !== "new");
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const { activeGardenId } = useAuthStore();
+  const isOnline = useOfflineStore((s) => s.isOnline);
 
   const { data: existing } = usePlant(isEdit ? id : undefined);
-  const { createPlant, updatePlant } = usePlants(activeGardenId);
-  const { data: locations = [] } = useLocations(activeGardenId);
-  const createLocation = useCreateLocation(activeGardenId);
+  const { createPlant, updatePlant } = usePlants();
+  const { data: locations = [] } = useLocations();
+  const createLocation = useCreateLocation();
 
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
@@ -50,7 +59,7 @@ export default function PlantForm() {
   const [newLocation, setNewLocation] = useState("");
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [uploadPhotoFile, setUploadPhotoFile] = useState<File | null>(null);
+  const [pendingPhotoDataUrl, setPendingPhotoDataUrl] = useState<string | null>(null);
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showIdentifyModal, setShowIdentifyModal] = useState(false);
@@ -58,8 +67,6 @@ export default function PlantForm() {
 
   useEffect(() => {
     if (existing && isEdit) {
-      console.log("[PlantForm] existing.wateringFreqByMonth:", existing.wateringFreqByMonth);
-      console.log("[PlantForm] existing.fertilizingFreqByMonth:", existing.fertilizingFreqByMonth);
       setName(existing.name);
       setNotes(existing.notes ?? "");
       setWaterDays(existing.wateringFreqDays?.toString() ?? "");
@@ -67,7 +74,7 @@ export default function PlantForm() {
       setWaterByMonth(existing.wateringFreqByMonth ?? null);
       setFertByMonth(existing.fertilizingFreqByMonth ?? null);
       setLocationId(existing.locationId ?? "");
-      if (existing.photoUrl) setPhotoPreview(existing.photoUrl);
+      setPhotoPreview(existing.cachedPhotoUrl ?? existing.photoUrl ?? null);
     }
   }, [existing, isEdit]);
 
@@ -76,15 +83,13 @@ export default function PlantForm() {
     if (!file) return;
 
     setPhotoFile(file);
-    setUploadPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
     setShowIdentifyModal(true);
-
     setProcessingPhoto(true);
     try {
       const resized = await resizeImage(file);
-      const resizedFile = new File([resized], file.name, { type: "image/jpeg" });
-      setUploadPhotoFile(resizedFile);
+      const dataUrl = await fileToDataUrl(resized);
+      setPendingPhotoDataUrl(dataUrl);
+      setPhotoPreview(dataUrl);
     } finally {
       setProcessingPhoto(false);
     }
@@ -95,13 +100,10 @@ export default function PlantForm() {
       toast.error("Le nom est requis");
       return;
     }
-    if (!activeGardenId) return;
-    setSaving(true);
 
+    setSaving(true);
     try {
       let resolvedLocationId = locationId;
-
-      // Create new location if entered
       if (newLocation.trim()) {
         const loc = await createLocation.mutateAsync(newLocation.trim());
         resolvedLocationId = loc.id;
@@ -110,8 +112,8 @@ export default function PlantForm() {
       const payload = {
         name: name.trim(),
         notes: notes.trim() || undefined,
-        wateringFreqDays: waterDays ? parseInt(waterDays) : undefined,
-        fertilizingFreqDays: fertDays ? parseInt(fertDays) : undefined,
+        wateringFreqDays: waterDays ? parseInt(waterDays, 10) : undefined,
+        fertilizingFreqDays: fertDays ? parseInt(fertDays, 10) : undefined,
         wateringFreqByMonth: waterByMonth ?? undefined,
         fertilizingFreqByMonth: fertByMonth ?? undefined,
         locationId: resolvedLocationId || undefined,
@@ -121,35 +123,29 @@ export default function PlantForm() {
       if (isEdit && id) {
         await updatePlant.mutateAsync({ id, ...payload });
         plantId = id;
-        toast.success("Plante mise à jour");
       } else {
-        const plant = await createPlant.mutateAsync({ gardenId: activeGardenId, ...payload });
+        const plant = await createPlant.mutateAsync(payload);
         plantId = plant.id;
-        toast.success("Plante ajoutée 🌱");
       }
 
-      // Upload photo if selected
-      if (uploadPhotoFile && plantId) {
-        const form = new FormData();
-        form.append("file", uploadPhotoFile);
-        const res = await api.post<{ photoUrl: string }>(`/plants/${plantId}/photo`, form);
-        const { photoUrl } = res.data;
-
-        await db.plants.update(plantId, { photoUrl });
-
-        qc.setQueryData<Plant | undefined>(["plant", plantId], (current) =>
-          current ? { ...current, photoUrl } : current
-        );
-        qc.setQueryData<Plant[] | undefined>(["plants", activeGardenId], (current) =>
-          current?.map((plant) =>
-            plant.id === plantId ? { ...plant, photoUrl } : plant
-          )
-        );
+      if (pendingPhotoDataUrl) {
+        await db.plants.update(plantId, { cachedPhotoUrl: pendingPhotoDataUrl });
+        if (isOnline) {
+          await uploadPhotoDataUrlForPlant(plantId, pendingPhotoDataUrl, photoFile?.name ?? "plant.jpg");
+        } else {
+          await queueAction({
+            kind: "UPLOAD_PHOTO",
+            payload: {
+              plantId,
+              photoDataUrl: pendingPhotoDataUrl,
+              filename: photoFile?.name ?? "plant.jpg",
+            },
+          });
+        }
       }
 
-      await qc.invalidateQueries({ queryKey: ["plant", plantId] });
-      await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-      navigate(isEdit ? `/plants/${id}` : `/plants/${plantId}`);
+      toast.success(isEdit ? "Plante mise à jour" : "Plante ajoutée");
+      navigate(isEdit ? `/plants/${plantId}` : "/");
     } catch {
       toast.error("Erreur lors de la sauvegarde");
     } finally {
@@ -157,9 +153,13 @@ export default function PlantForm() {
     }
   };
 
+  const uploadPhotoDataUrlForPlant = async (plantId: string, photoDataUrl: string, filename: string) => {
+    const finalPhotoUrl = await uploadPhotoAsset(plantId, photoDataUrl, filename);
+    await db.plants.update(plantId, { photoUrl: finalPhotoUrl, cachedPhotoUrl: photoDataUrl });
+  };
+
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
           <ArrowLeft className="w-5 h-5" />
@@ -169,7 +169,6 @@ export default function PlantForm() {
         </h1>
       </div>
 
-      {/* Photo */}
       <div
         className="relative w-full h-48 rounded-2xl overflow-hidden bg-green-100 dark:bg-green-900 cursor-pointer flex items-center justify-center"
         onClick={() => fileRef.current?.click()}
@@ -190,15 +189,10 @@ export default function PlantForm() {
             </div>
           </div>
         )}
-        <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 rounded-full p-1.5 shadow">
-          <Camera className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-        </div>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
       </div>
 
-      {/* Form */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-4 shadow-sm">
-        {/* Name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom *</label>
           <input
@@ -206,23 +200,21 @@ export default function PlantForm() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Monstera, Pothos..."
-            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700"
           />
         </div>
 
-        {/* Notes */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Conseils d'entretien..."
-            rows={3}
-            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+            rows={4}
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 resize-none"
           />
         </div>
 
-        {/* Frequencies */}
         <MonthlyFreqEditor
           label="Arrosage (jours entre chaque)"
           emoji="💧"
@@ -240,15 +232,12 @@ export default function PlantForm() {
           onChangeScalar={setFertDays}
         />
 
-        {/* Location */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            📍 Emplacement
-          </label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">📍 Emplacement</label>
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700"
           >
             <option value="">Sans emplacement</option>
             {locations.map((loc) => (
@@ -257,22 +246,18 @@ export default function PlantForm() {
           </select>
         </div>
 
-        {/* New location shortcut */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Ou créer un emplacement
-          </label>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ou créer un emplacement</label>
           <input
             type="text"
             value={newLocation}
             onChange={(e) => setNewLocation(e.target.value)}
-            placeholder="Salon, Cuisine, Balcon..."
-            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
+            placeholder="Salon, Cuisine..."
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700"
           />
         </div>
       </div>
 
-      {/* Submit */}
       <button
         onClick={handleSubmit}
         disabled={saving}
@@ -282,24 +267,24 @@ export default function PlantForm() {
         {isEdit ? "Enregistrer les modifications" : "Ajouter la plante"}
       </button>
 
-      {showIdentifyModal && photoFile && (
+      {showIdentifyModal && photoFile && isOnline && (
         <IdentifyModal
           imageFile={photoFile}
           plantName={name.trim() || "cette plante"}
           onApplyName={(value) => {
             setName(value);
-            toast.success("Nom applique");
+            toast.success("Nom appliqué");
           }}
           onApplyDetails={(value) => {
             setNotes(value);
-            toast.success("Details appliques");
+            toast.success("Détails appliqués");
           }}
           onApplyPlanning={(planning) => {
             setWaterByMonth(planning.wateringFreqByMonth);
             setFertByMonth(planning.fertilizingFreqByMonth);
             setWaterDays(planning.wateringFreqDays?.toString() ?? "");
             setFertDays(planning.fertilizingFreqDays?.toString() ?? "");
-            toast.success("Plannings appliques");
+            toast.success("Plannings appliqués");
           }}
           onClose={() => setShowIdentifyModal(false)}
         />

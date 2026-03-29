@@ -1,28 +1,18 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
 
-import { useAuthStore } from "./stores/auth";
+import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useOfflineSync } from "./hooks/useOfflineSync";
-
+import { useAppStore } from "./stores/app";
 import Layout from "./components/Layout";
 
-const Login = lazy(() => import("./pages/Login"));
-const Register = lazy(() => import("./pages/Register"));
+const Setup = lazy(() => import("./pages/Setup"));
 const Home = lazy(() => import("./pages/Home"));
 const PlantDetail = lazy(() => import("./pages/PlantDetail"));
 const PlantForm = lazy(() => import("./pages/PlantForm"));
-const Calendar = lazy(() => import("./pages/Calendar"));
-const Stats = lazy(() => import("./pages/Stats"));
 const Settings = lazy(() => import("./pages/Settings"));
-const ReactQueryDevtools = import.meta.env.DEV
-  ? lazy(() =>
-      import("@tanstack/react-query-devtools").then((module) => ({
-        default: module.ReactQueryDevtools,
-      }))
-    )
-  : null;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,34 +25,37 @@ const queryClient = new QueryClient({
 });
 
 function AppRoutes() {
-  const { user } = useAuthStore();
+  const { setupComplete, hasLocalData } = useAppStore();
+  const { appReady } = useAppBootstrap();
   useOfflineSync();
 
-  if (!user) {
-    return (
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </Suspense>
-    );
+  if (!appReady) {
+    return <RouteFallback />;
   }
+
+  const canEnterApp = setupComplete || hasLocalData;
 
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route element={<Layout />}>
-          <Route index element={<Home />} />
-          <Route path="/plants/new" element={<PlantForm />} />
-          <Route path="/plants/:id" element={<PlantDetail />} />
-          <Route path="/plants/:id/edit" element={<PlantForm />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/stats" element={<Stats />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {!canEnterApp ? (
+          <>
+            <Route path="/setup" element={<Setup />} />
+            <Route path="*" element={<Navigate to="/setup" replace />} />
+          </>
+        ) : (
+          <>
+            <Route element={<Layout />}>
+              <Route index element={<Home />} />
+              <Route path="/plants/new" element={<PlantForm />} />
+              <Route path="/plants/:id" element={<PlantDetail />} />
+              <Route path="/plants/:id/edit" element={<PlantForm />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route path="/setup" element={<Setup />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </>
+        )}
       </Routes>
     </Suspense>
   );
@@ -81,22 +74,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AppRoutes />
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            duration: 2500,
-            style: {
-              borderRadius: "12px",
-              fontSize: "14px",
-            },
-          }}
-        />
+        <Toaster position="top-center" />
       </BrowserRouter>
-      {ReactQueryDevtools ? (
-        <Suspense fallback={null}>
-          <ReactQueryDevtools />
-        </Suspense>
-      ) : null}
     </QueryClientProvider>
   );
 }

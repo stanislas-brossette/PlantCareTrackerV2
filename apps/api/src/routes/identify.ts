@@ -242,7 +242,6 @@ Réponds UNIQUEMENT en JSON, sans aucun texte autour.`,
 const identifyRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/preview",
-    { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       const file = await req.file();
       if (!file) return reply.status(400).send({ error: "No file uploaded" });
@@ -264,17 +263,11 @@ const identifyRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Params: { plantId: string } }>(
     "/:plantId",
-    { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       const plant = await fastify.prisma.plant.findUnique({
         where: { id: req.params.plantId },
       });
       if (!plant) return reply.status(404).send({ error: "Plant not found" });
-
-      const member = await fastify.prisma.gardenMember.findUnique({
-        where: { userId_gardenId: { userId: req.userId, gardenId: plant.gardenId } },
-      });
-      if (!member) return reply.status(403).send({ error: "Forbidden" });
 
       if (!plant.photoUrl) {
         return reply.status(400).send({ error: "Plant has no photo" });
@@ -317,17 +310,11 @@ const identifyRoutes: FastifyPluginAsync = async (fastify) => {
     };
   }>(
     "/:plantId",
-    { preHandler: [fastify.authenticate] },
     async (req, reply) => {
       const plant = await fastify.prisma.plant.findUnique({
         where: { id: req.params.plantId },
       });
       if (!plant) return reply.status(404).send({ error: "Plant not found" });
-
-      const member = await fastify.prisma.gardenMember.findUnique({
-        where: { userId_gardenId: { userId: req.userId, gardenId: plant.gardenId } },
-      });
-      if (!member) return reply.status(403).send({ error: "Forbidden" });
 
       const { identification, apply } = req.body;
       const updateData: Record<string, unknown> = {};

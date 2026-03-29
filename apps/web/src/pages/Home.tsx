@@ -3,14 +3,16 @@ import { Link } from "react-router-dom";
 import { Plus, Search, Archive, MapPin } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import { useRecordCare } from "../hooks/useCare";
-import { useAuthStore } from "../stores/auth";
 import PlantCard from "../components/PlantCard";
 import toast from "react-hot-toast";
+import { useAppStore } from "../stores/app";
+import { useOfflineStore } from "../stores/offline";
 
 export default function Home() {
-  const { activeGardenId } = useAuthStore();
-  const { plants, isLoading } = usePlants(activeGardenId);
-  const recordCare = useRecordCare(activeGardenId);
+  const { gardenName, hasLocalData } = useAppStore();
+  const { plants, isLoading } = usePlants();
+  const recordCare = useRecordCare();
+  const isOnline = useOfflineStore((s) => s.isOnline);
 
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
@@ -58,13 +60,22 @@ export default function Home() {
     toast.success(`${plant?.name} ${labels[type]}`);
   };
 
-  if (!activeGardenId) {
+  if (!gardenName && !hasLocalData && plants.length === 0) {
     return (
       <div className="text-center py-16 text-gray-500">
-        <p>Aucun jardin trouvé.</p>
+        <p>Aucune donnée synchronisée.</p>
         <Link to="/settings" className="text-green-600 underline text-sm mt-2 block">
-          Créer un jardin dans les réglages
+          Configurer le serveur
         </Link>
+      </div>
+    );
+  }
+
+  if (!isOnline && plants.length === 0) {
+    return (
+      <div className="text-center py-16 text-gray-500">
+        <p>Aucune donnée locale trouvée sur cet appareil.</p>
+        <p className="text-sm mt-2">Reconnecte-toi au Wi‑Fi une fois pour effectuer une synchronisation complète.</p>
       </div>
     );
   }
@@ -74,10 +85,10 @@ export default function Home() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-            Jardin
+            Maison
           </p>
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {showArchived ? "Plantes archivées" : "Mes plantes"}
+            {showArchived ? "Plantes archivées" : gardenName ?? "Mes plantes"}
           </h1>
         </div>
         <Link

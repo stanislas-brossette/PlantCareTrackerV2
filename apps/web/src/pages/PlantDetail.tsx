@@ -1,64 +1,29 @@
 import { useState } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  Home, RefreshCw, Trash2, Edit, Sparkles,
-  Undo2, Loader2, MoreVertical, MapPin, ChevronLeft, ChevronRight
-} from "lucide-react";
-import { formatDistanceToNow, format, addDays } from "date-fns";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import { Home, Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical } from "lucide-react";
+import { addDays, format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import toast from "react-hot-toast";
 import { usePlant, usePlants } from "../hooks/usePlants";
 import { useCareEvents, useRecordCare, useUndoCare } from "../hooks/useCare";
-import { useAuthStore } from "../stores/auth";
 import IdentifyModal from "../components/IdentifyModal";
-import toast from "react-hot-toast";
-import api from "../lib/api";
+import { resolveAssetUrl } from "../lib/serverConfig";
+import { useOfflineStore } from "../stores/offline";
 import type { CareType } from "@plantcare/shared";
 
-const CARE_LABELS: Record<CareType, { label: string; icon: string; color: string }> = {
-  WATERING:    { label: "Arrosage",     icon: "💧", color: "text-blue-600" },
-  FERTILIZING: { label: "Fertilisation", icon: "🌿", color: "text-green-600" },
-  REPOTTING:   { label: "Rempotage",    icon: "🪴", color: "text-orange-600" },
-  PRUNING:     { label: "Taille",       icon: "✂️", color: "text-purple-600" },
-  TREATMENT:   { label: "Traitement",   icon: "💊", color: "text-red-600" },
-  OTHER:       { label: "Autre",        icon: "📝", color: "text-gray-600" },
+const CARE_LABELS: Record<CareType, { label: string; icon: string }> = {
+  WATERING: { label: "Arrosage", icon: "💧" },
+  FERTILIZING: { label: "Fertilisation", icon: "🌿" },
+  REPOTTING: { label: "Rempotage", icon: "🪴" },
+  PRUNING: { label: "Taille", icon: "✂️" },
+  TREATMENT: { label: "Traitement", icon: "💊" },
+  OTHER: { label: "Autre", icon: "📝" },
 };
 
-const MONTH_SHORT = ["J","F","M","A","M","J","J","A","S","O","N","D"];
-const CURRENT_MONTH = new Date().getMonth();
-
-/** Mini bar chart for a 12-month frequency array */
-function FreqBar({ values }: { values: number[] }) {
-  const max = Math.max(...values.filter(Boolean), 1);
-  return (
-    <div className="flex gap-px h-6 items-end">
-      {values.map((v, i) => (
-        <div
-          key={i}
-          title={`${MONTH_SHORT[i]}: ${v > 0 ? `${v}j` : "—"}`}
-          className="flex-1 rounded-sm transition-all"
-          style={{
-            height: v > 0 ? `${Math.round((v / max) * 100)}%` : "3px",
-            minHeight: "3px",
-            backgroundColor:
-              i === CURRENT_MONTH
-                ? "#16a34a"
-                : v === 0
-                ? "#e5e7eb"
-                : "#86efac",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** Compact schedule block */
 function ScheduleRow({
   emoji,
   label,
   freq,
-  freqByMonth,
   lastDate,
   needs,
   onRecord,
@@ -67,101 +32,54 @@ function ScheduleRow({
   emoji: string;
   label: string;
   freq: number | null | undefined;
-  freqByMonth: number[] | null | undefined;
   lastDate: string | null | undefined;
   needs: boolean | null | undefined;
   onRecord: () => void;
   onUndo: () => void;
 }) {
-  const nextDate =
-    lastDate && freq ? addDays(new Date(lastDate), freq) : null;
+  const nextDate = lastDate && freq ? addDays(new Date(lastDate), freq) : null;
 
   return (
-    <div className="flex items-center gap-3">
-      {/* Mini bar chart */}
-      <div className="w-24 flex-shrink-0">
-        {freqByMonth ? (
-          <FreqBar values={freqByMonth} />
-        ) : (
-          <div className="h-6 flex items-center">
-            <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-gray-600" />
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
+    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-gray-800">
+      <div className="text-2xl">{emoji}</div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-          <span>{emoji} {label}</span>
-          {freq && (
-            <span className="text-gray-400">· tous les {freq}j</span>
-          )}
-        </div>
-        <div className="text-xs text-gray-400 truncate">
+        <div className="text-sm font-medium text-gray-900 dark:text-white">{label}</div>
+        <div className="text-xs text-gray-500">
           {lastDate
             ? `Dernier : ${formatDistanceToNow(new Date(lastDate), { addSuffix: true, locale: fr })}`
             : "Jamais"}
-          {nextDate && (
-            <span className="ml-1">
-              · Prochain : {format(nextDate, "d MMM", { locale: fr })}
-            </span>
-          )}
+          {nextDate && <span className="ml-1">· Prochain : {format(nextDate, "d MMM", { locale: fr })}</span>}
         </div>
       </div>
-
-      {/* Actions */}
-      <div className="flex gap-1.5 flex-shrink-0 items-center">
-        <button
-          onClick={onRecord}
-          className={`px-4 py-2 rounded-xl text-base font-medium transition-colors ${
-            needs
-              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 hover:bg-red-200"
-              : "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200"
-          }`}
-        >
-          {emoji}
-        </button>
-        <button
-          onClick={onUndo}
-          title="Annuler le dernier soin"
-          className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        >
-          <Undo2 className="w-4 h-4" />
-        </button>
-      </div>
+      <button
+        onClick={onRecord}
+        className={`rounded-xl px-4 py-2 text-sm font-medium ${needs ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}
+      >
+        {emoji}
+      </button>
+      <button onClick={onUndo} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+        <Undo2 className="w-4 h-4" />
+      </button>
     </div>
   );
 }
 
 export default function PlantDetail() {
   const { id } = useParams<{ id: string }>();
-  const { activeGardenId } = useAuthStore();
   const navigate = useNavigate();
-  const qc = useQueryClient();
-
   const { data: plant, isLoading } = usePlant(id);
-  const { plants } = usePlants(activeGardenId);
   const { data: events = [] } = useCareEvents(id);
-  const recordCare = useRecordCare(activeGardenId);
-  const undoCare = useUndoCare(activeGardenId);
-
-  const siblingPlants = plants.filter((p) =>
-    plant ? p.archived === plant.archived : !p.archived
-  );
-  const currentIndex = siblingPlants.findIndex((p) => p.id === id);
-  const prevPlant = currentIndex > 0 ? siblingPlants[currentIndex - 1] : null;
-  const nextPlant = currentIndex < siblingPlants.length - 1 ? siblingPlants[currentIndex + 1] : null;
+  const { updatePlant, deletePlant } = usePlants();
+  const recordCare = useRecordCare();
+  const undoCare = useUndoCare();
+  const isOnline = useOfflineStore((s) => s.isOnline);
 
   const [showIdentify, setShowIdentify] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [careNote, setCareNote] = useState("");
 
   const handleCare = async (type: CareType) => {
     if (!id) return;
-    await recordCare.mutateAsync({ plantId: id, type, note: careNote || undefined });
-    setCareNote("");
+    await recordCare.mutateAsync({ plantId: id, type });
     toast.success(`${CARE_LABELS[type].icon} ${CARE_LABELS[type].label} enregistré`);
   };
 
@@ -172,38 +90,17 @@ export default function PlantDetail() {
   };
 
   const handleArchive = async () => {
-    if (!id) return;
-    await api.patch(`/plants/${id}`, { archived: !plant?.archived });
-    toast.success(plant?.archived ? "Plante restaurée" : "Plante archivée");
-    await qc.invalidateQueries({ queryKey: ["plant", id] });
-    await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
+    if (!id || !plant) return;
+    await updatePlant.mutateAsync({ id, archived: !plant.archived });
+    toast.success(plant.archived ? "Plante restaurée" : "Plante archivée");
     navigate("/");
   };
 
   const handleDelete = async () => {
     if (!id) return;
-    setDeleting(true);
-    try {
-      await api.delete(`/plants/${id}`);
-      qc.removeQueries({ queryKey: ["plant", id] });
-      qc.setQueryData(["plants", activeGardenId], (current: typeof plants | undefined) =>
-        current?.filter((plant) => plant.id !== id)
-      );
-      await qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-      toast.success("Plante supprimée");
-      navigate("/");
-    } catch {
-      toast.error("Erreur lors de la suppression");
-    } finally {
-      setDeleting(false);
-      setShowDeleteConfirm(false);
-    }
-  };
-
-  const handleIdentificationApplied = () => {
-    qc.invalidateQueries({ queryKey: ["plant", id] });
-    qc.invalidateQueries({ queryKey: ["plants", activeGardenId] });
-    toast.success("Modification appliquée ✓");
+    await deletePlant.mutateAsync(id);
+    toast.success("Plante supprimée");
+    navigate("/");
   };
 
   if (isLoading) {
@@ -223,242 +120,106 @@ export default function PlantDetail() {
     );
   }
 
+  const displayPhoto = plant.cachedPhotoUrl || resolveAssetUrl(plant.photoUrl);
+
   return (
     <div className="space-y-4">
-
-      {/* Photo hero — full image visible, header overlaid */}
-      <div className="relative rounded-2xl overflow-hidden">
-        {plant.photoUrl ? (
-          <img
-            src={plant.photoUrl}
-            alt={plant.name}
-            className="w-full object-contain max-h-72"
-          />
+      <div className="relative rounded-2xl overflow-hidden bg-white shadow-sm dark:bg-gray-800">
+        {displayPhoto ? (
+          <img src={displayPhoto} alt={plant.name} className="w-full object-cover max-h-72" />
         ) : (
-          <div className="h-40 flex items-center justify-center text-5xl">🌿</div>
+          <div className="h-48 flex items-center justify-center text-5xl">🌿</div>
         )}
 
-        {/* Header overlay */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-2"
-          style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)" }}
-        >
-          <button
-            onClick={() => navigate("/")}
-            className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
-          >
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-3" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)" }}>
+          <button onClick={() => navigate("/")} className="p-2 rounded-xl bg-black/30 text-white hover:bg-black/50">
             <Home className="w-5 h-5" />
           </button>
-          <h1 className="font-bold text-white text-base truncate mx-2 drop-shadow">
-            {plant.name}
-          </h1>
+          <h1 className="font-bold text-white text-base truncate mx-2">{plant.name}</h1>
           <div className="relative">
-          <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="p-1.5 rounded-xl bg-black/30 text-white hover:bg-black/50"
-            aria-label="Ouvrir le menu de la plante"
-          >
-            <MoreVertical className="w-5 h-5" />
-          </button>
+            <button onClick={() => setShowMenu((v) => !v)} className="p-2 rounded-xl bg-black/30 text-white hover:bg-black/50">
+              <MoreVertical className="w-5 h-5" />
+            </button>
             {showMenu && (
-              <div className="absolute right-0 top-9 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg z-10 min-w-40">
-                <Link
-                  to={`/plants/${id}/edit`}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-xl"
-                >
+              <div className="absolute right-0 top-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg z-10 min-w-40">
+                <Link to={`/plants/${id}/edit`} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
                   <Edit className="w-4 h-4" /> Modifier
                 </Link>
-                {plant.photoUrl && (
-                  <button
-                    onClick={() => { setShowIdentify(true); setShowMenu(false); }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-purple-600 dark:text-purple-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    <Sparkles className="w-4 h-4" /> Identifier
-                  </button>
-                )}
-                <button
-                  onClick={handleArchive}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  aria-label={plant.archived ? "Restaurer la plante" : "Archiver la plante"}
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  {plant.archived ? "Restaurer" : "Archiver"}
-                </button>
                 <button
                   onClick={() => {
+                    setShowIdentify(true);
                     setShowMenu(false);
-                    setShowDeleteConfirm(true);
                   }}
-                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-b-xl"
-                  aria-label="Supprimer la plante"
+                  disabled={!displayPhoto || !isOnline}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-left disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
+                  <Sparkles className="w-4 h-4" /> Identifier
+                </button>
+                <button onClick={handleArchive} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700">
+                  {plant.archived ? "Restaurer" : "Archiver"}
+                </button>
+                <button onClick={handleDelete} className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-gray-50 dark:hover:bg-gray-700">
                   <Trash2 className="w-4 h-4" /> Supprimer
                 </button>
               </div>
             )}
           </div>
         </div>
-
-        {/* Prev / Next plant navigation */}
-        {prevPlant && (
-          <button
-            onClick={() => navigate(`/plants/${prevPlant.id}`)}
-            title={prevPlant.name}
-            className="absolute left-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
-          >
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-        )}
-        {nextPlant && (
-          <button
-            onClick={() => navigate(`/plants/${nextPlant.id}`)}
-            title={nextPlant.name}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors"
-          >
-            <ChevronRight className="w-6 h-6" />
-          </button>
-        )}
       </div>
 
-      {/* Info + plannings */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm space-y-3">
-        {/* Location + notes */}
-        {plant.location && (
-          <div className="flex items-center gap-1 text-xs text-gray-400">
-            <MapPin className="w-3 h-3" /> {plant.location.name}
-          </div>
-        )}
-        {plant.notes && (
-          <p className="whitespace-pre-line text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
-            {plant.notes}
-          </p>
-        )}
-
-        {/* Schedules */}
-        <div className="space-y-2 pt-1 border-t border-gray-100 dark:border-gray-700">
-          <ScheduleRow
-            emoji="💧"
-            label="Arrosage"
-            freq={plant.currentWateringFreq}
-            freqByMonth={plant.wateringFreqByMonth}
-            lastDate={plant.lastWatered}
-            needs={plant.needsWatering}
-            onRecord={() => handleCare("WATERING")}
-            onUndo={() => handleUndo("WATERING")}
-          />
-          <ScheduleRow
-            emoji="🌿"
-            label="Fertilisation"
-            freq={plant.currentFertilizingFreq}
-            freqByMonth={plant.fertilizingFreqByMonth}
-            lastDate={plant.lastFertilized}
-            needs={plant.needsFertilizing}
-            onRecord={() => handleCare("FERTILIZING")}
-            onUndo={() => handleUndo("FERTILIZING")}
-          />
-        </div>
-      </div>
-
-      {/* Other care actions */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-white text-sm">Autres soins</h2>
-        <input
-          type="text"
-          placeholder="Note (optionnelle)..."
-          value={careNote}
-          onChange={(e) => setCareNote(e.target.value)}
-          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-        />
-        <div className="grid grid-cols-4 gap-2">
-          {(["REPOTTING", "PRUNING", "TREATMENT", "OTHER"] as CareType[]).map((type) => {
-            const c = CARE_LABELS[type];
-            return (
-              <button
-                key={type}
-                onClick={() => handleCare(type)}
-                disabled={recordCare.isPending}
-                className="py-2 px-1 rounded-xl text-xs font-medium border bg-gray-50 border-gray-200 dark:bg-gray-700 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:border-green-400 transition-colors flex flex-col items-center gap-1"
-              >
-                <span className="text-lg">{c.icon}</span>
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Care history */}
-      {events.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm">
-          <h2 className="font-semibold text-gray-900 dark:text-white text-sm mb-3">
-            Historique ({events.length})
-          </h2>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {events.map((event) => {
-              const c = CARE_LABELS[event.type as CareType] ?? CARE_LABELS.OTHER;
-              return (
-                <div
-                  key={event.id}
-                  className="flex items-start gap-3 py-2 border-b border-gray-50 dark:border-gray-700 last:border-0"
-                >
-                  <span className="text-base">{c.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className={`text-sm font-medium ${c.color}`}>{c.label}</span>
-                      <span className="text-xs text-gray-400">
-                        {formatDistanceToNow(new Date(event.performedAt), { addSuffix: true, locale: fr })}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {format(new Date(event.performedAt), "d MMM yyyy à HH:mm", { locale: fr })}
-                      {event.user && ` · ${event.user.name ?? event.user.email}`}
-                    </div>
-                    {event.note && <p className="text-xs text-gray-500 mt-0.5 italic">{event.note}</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+      {plant.notes && (
+        <div className="rounded-2xl bg-white p-4 text-sm text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200 whitespace-pre-line">
+          {plant.notes}
         </div>
       )}
 
-      {showIdentify && (
+      <ScheduleRow
+        emoji="💧"
+        label="Arrosage"
+        freq={plant.currentWateringFreq}
+        lastDate={plant.lastWatered}
+        needs={plant.needsWatering}
+        onRecord={() => handleCare("WATERING")}
+        onUndo={() => handleUndo("WATERING")}
+      />
+      <ScheduleRow
+        emoji="🌿"
+        label="Fertilisation"
+        freq={plant.currentFertilizingFreq}
+        lastDate={plant.lastFertilized}
+        needs={plant.needsFertilizing}
+        onRecord={() => handleCare("FERTILIZING")}
+        onUndo={() => handleUndo("FERTILIZING")}
+      />
+
+      <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
+        <h2 className="font-semibold text-gray-900 dark:text-white mb-3">Historique</h2>
+        {events.length === 0 ? (
+          <p className="text-sm text-gray-500">Aucun soin enregistré.</p>
+        ) : (
+          <div className="space-y-2">
+            {events.map((event) => (
+              <div key={event.id} className="border-b border-gray-100 pb-2 last:border-0">
+                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                  {CARE_LABELS[event.type].icon} {CARE_LABELS[event.type].label}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {format(new Date(event.performedAt), "d MMM yyyy HH:mm", { locale: fr })}
+                  {event.note ? ` · ${event.note}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showIdentify && displayPhoto && id && (
         <IdentifyModal
-          plantId={plant.id}
+          plantId={id}
           plantName={plant.name}
-          onApplied={handleIdentificationApplied}
+          onApplied={() => toast.success("Modification appliquée")}
           onClose={() => setShowIdentify(false)}
         />
-      )}
-
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-800 shadow-xl border border-gray-100 dark:border-gray-700">
-            <div className="p-4 space-y-2">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white">
-                Supprimer cette plante ?
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                Cette action est définitive. La plante et sa photo seront supprimées.
-              </p>
-            </div>
-            <div className="p-4 pt-0 flex gap-2">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-                className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-              >
-                {deleting ? "Suppression..." : "Supprimer"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

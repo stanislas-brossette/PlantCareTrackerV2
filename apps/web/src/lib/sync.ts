@@ -1,6 +1,8 @@
 import api from "./api";
-import { db, removeAction } from "./db";
-import type { PendingAction } from "@plantcare/shared";
+import { db, hydrateBootstrapToLocal, removeAction } from "./db";
+import { cacheAllPlantPhotos, uploadPhotoDataUrl } from "./photos";
+import type { BootstrapPayload, PendingAction } from "@plantcare/shared";
+import { useAppStore } from "../stores/app";
 
 const MAX_RETRIES = 5;
 
@@ -18,8 +20,16 @@ async function executeAction(pending: PendingAction): Promise<void> {
       break;
     case "CREATE_PLANT": {
       const { tempId, ...payload } = action.payload;
-      await api.post("/plants", payload);
+      const res = await api.post<{ id: string }>("/plants", payload);
+      const localPlant = await db.plants.get(tempId);
       await db.plants.delete(tempId);
+      if (localPlant) {
+        await db.plants.put({
+          ...localPlant,
+          id: res.data.id,
+          _localOnly: false,
+        });
+      }
       break;
     }
     case "UPDATE_PLANT": {
@@ -36,7 +46,33 @@ async function executeAction(pending: PendingAction): Promise<void> {
     case "DELETE_LOCATION":
       await api.delete(`/locations/${action.payload.id}`);
       break;
+    case "UPLOAD_PHOTO":
+      await uploadPhotoDataUrl(
+        action.payload.plantId,
+        action.payload.photoDataUrl,
+        action.payload.filename
+      );
+      break;
   }
+}
+
+export async function bootstrapFromServer() {
+  const res = await api.get<BootstrapPayload>("/bootstrap");
+  await hydrateBootstrapToLocal(res.data);
+  await cacheAllPlantPhotos();
+  useAppStore.getState().setGardenContext(res.data.context.gardenId, res.data.context.gardenName);
+  useAppStore.getState().setLastSuccessfulSyncAt(new Date().toISOString());
+  return res.data;
+}
+
+export async function checkServerHealth() {
+  const res = await api.get<{
+    ok: boolean;
+    ts: string;
+    gardenId: string;
+    gardenName: string;
+  }>("/health");
+  return res.data;
 }
 
 export async function flushPendingActions(
@@ -55,25 +91,36 @@ export async function flushPendingActions(
       success++;
     } catch (err: unknown) {
       const status = (err as { response?: { status: number } }).response?.status;
-      // 4xx errors won't succeed on retry → drop them
       if (status && status >= 400 && status < 500) {
+        await db.pendingActions.update(action.id, {
+          lastError: `Permanent failure (${status})`,
+        });
         await removeAction(action.id);
         failed++;
       } else if (action.retries >= MAX_RETRIES) {
+        await db.pendingActions.update(action.id, {
+          lastError: "Exceeded retry budget",
+        });
         await removeAction(action.id);
         failed++;
       } else {
-        await db.pendingActions.update(action.id, { retries: action.retries + 1 });
+        await db.pendingActions.update(action.id, {
+          retries: action.retries + 1,
+          lastError: "Temporary sync failure",
+        });
         failed++;
       }
     }
     onProgress?.(success + failed, pending.length);
   }
 
+  if (success > 0) {
+    await bootstrapFromServer();
+  }
+
   return { success, failed };
 }
 
-// Listen for online event and auto-flush
 export function initOfflineSync(onFlush?: (result: { success: number; failed: number }) => void) {
   const handleOnline = async () => {
     const result = await flushPendingActions();
@@ -83,7 +130,6 @@ export function initOfflineSync(onFlush?: (result: { success: number; failed: nu
   };
 
   window.addEventListener("online", handleOnline);
-  // Also try on init (in case actions queued and page reloaded)
   if (navigator.onLine) {
     setTimeout(handleOnline, 2000);
   }

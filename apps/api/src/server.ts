@@ -6,15 +6,12 @@ import path from "path";
 import fs from "fs";
 
 import prismaPlugin from "./plugins/prisma.js";
-import authPlugin from "./plugins/auth.js";
-
-import authRoutes from "./routes/auth.js";
-import gardenRoutes from "./routes/gardens.js";
 import plantRoutes from "./routes/plants.js";
 import locationRoutes from "./routes/locations.js";
 import careRoutes from "./routes/care.js";
 import identifyRoutes from "./routes/identify.js";
-import pushRoutes from "./routes/push.js";
+import bootstrapRoutes from "./routes/bootstrap.js";
+import { ensureMvpContext } from "./utils/mvp.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -28,30 +25,25 @@ async function build() {
     },
   });
 
-  // CORS (allow frontend dev server)
   await fastify.register(fastifyCors, {
-    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
-    credentials: true,
+    origin: true,
+    credentials: false,
   });
 
-  // Multipart (file uploads)
   await fastify.register(fastifyMultipart, {
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+    limits: { fileSize: 10 * 1024 * 1024 },
   });
 
-  // Ensure upload dir exists
   if (!fs.existsSync(UPLOAD_DIR)) {
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   }
 
-  // Serve uploaded images
   await fastify.register(fastifyStatic, {
     root: UPLOAD_DIR,
     prefix: "/uploads/",
     decorateReply: false,
   });
 
-  // Serve built frontend (production only)
   if (fs.existsSync(WEB_DIST)) {
     await fastify.register(fastifyStatic, {
       root: WEB_DIST,
@@ -68,21 +60,24 @@ async function build() {
     fastify.log.info("Frontend dist not found — running in API-only mode (use Vite dev server)");
   }
 
-  // Core app setup
   await prismaPlugin(fastify, {});
-  await authPlugin(fastify, {});
+  await ensureMvpContext(fastify);
 
-  // Routes
-  fastify.register(authRoutes, { prefix: "/api/auth" });
-  fastify.register(gardenRoutes, { prefix: "/api/gardens" });
+  fastify.register(bootstrapRoutes, { prefix: "/api" });
   fastify.register(plantRoutes, { prefix: "/api/plants" });
   fastify.register(locationRoutes, { prefix: "/api/locations" });
   fastify.register(careRoutes, { prefix: "/api/care" });
   fastify.register(identifyRoutes, { prefix: "/api/identify" });
-  fastify.register(pushRoutes, { prefix: "/api/push" });
 
-  // Health check
-  fastify.get("/api/health", async () => ({ ok: true, ts: new Date().toISOString() }));
+  fastify.get("/api/health", async () => {
+    const { garden } = await ensureMvpContext(fastify);
+    return {
+      ok: true,
+      ts: new Date().toISOString(),
+      gardenId: garden.id,
+      gardenName: garden.name,
+    };
+  });
 
   return fastify;
 }

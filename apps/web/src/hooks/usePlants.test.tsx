@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Plant } from "@plantcare/shared";
+import type { LocalPlant } from "@plantcare/shared";
 
 vi.mock("dexie-react-hooks", () => ({
   useLiveQuery: vi.fn(),
@@ -20,15 +20,15 @@ vi.mock("../lib/db", () => ({
   db: {
     plants: {
       delete: vi.fn(),
-      where: vi.fn(() => ({
-        equals: vi.fn(() => ({
-          toArray: vi.fn().mockResolvedValue([]),
-        })),
-      })),
+      toArray: vi.fn().mockResolvedValue([]),
     },
   },
   queueAction: vi.fn(),
   syncPlantsToLocal: vi.fn(),
+}));
+
+vi.mock("../lib/photos", () => ({
+  cachePhotoForPlant: vi.fn().mockResolvedValue(null),
 }));
 
 import { useLiveQuery } from "dexie-react-hooks";
@@ -46,18 +46,18 @@ function createWrapper() {
   });
 
   return {
-    queryClient,
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   };
 }
 
-const activePlant: Plant = {
+const activePlant: LocalPlant = {
   id: "plant-active",
   name: "Monstera",
   archived: false,
   photoUrl: null,
+  cachedPhotoUrl: null,
   notes: null,
   gardenId: "garden-1",
   locationId: "loc-1",
@@ -76,49 +76,37 @@ const activePlant: Plant = {
   updatedAt: "2026-03-26T10:00:00.000Z",
 };
 
-const archivedPlant: Plant = {
-  ...activePlant,
-  id: "plant-archived",
-  name: "Pothos",
-  archived: true,
-  locationId: null,
-  location: null,
-};
-
 describe("usePlants", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useOfflineStore.setState({ isOnline: true, pendingCount: 0 });
+    useOfflineStore.setState({ isOnline: true, isSyncing: false, pendingCount: 0, lastSyncError: null });
     vi.mocked(useLiveQuery).mockReturnValue([]);
   });
 
-  it("fetches active and archived plants, merges them, and syncs local storage", async () => {
+  it("fetches active and archived plants and syncs local storage", async () => {
     vi.mocked(api.get)
       .mockResolvedValueOnce({ data: [activePlant] })
-      .mockResolvedValueOnce({ data: [archivedPlant] });
+      .mockResolvedValueOnce({ data: [] });
 
     const { wrapper } = createWrapper();
-    const { result } = renderHook(() => usePlants("garden-1"), { wrapper });
+    const { result } = renderHook(() => usePlants(), { wrapper });
 
-    await waitFor(() => expect(result.current.plants).toHaveLength(2));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
 
-    expect(api.get).toHaveBeenNthCalledWith(1, "/plants", {
-      params: { gardenId: "garden-1", archived: false },
-    });
-    expect(api.get).toHaveBeenNthCalledWith(2, "/plants", {
-      params: { gardenId: "garden-1", archived: true },
-    });
-    expect(syncPlantsToLocal).toHaveBeenCalledWith([activePlant, archivedPlant], "garden-1");
+    expect(api.get).toHaveBeenNthCalledWith(1, "/plants", { params: { archived: false } });
+    expect(api.get).toHaveBeenNthCalledWith(2, "/plants", { params: { archived: true } });
+    expect(syncPlantsToLocal).toHaveBeenCalled();
+    expect(result.current.plants).toEqual([]);
   });
 
   it("falls back to local plants when offline without calling the API", () => {
-    useOfflineStore.setState({ isOnline: false, pendingCount: 0 });
-    vi.mocked(useLiveQuery).mockReturnValue([activePlant, archivedPlant]);
+    useOfflineStore.setState({ isOnline: false, isSyncing: false, pendingCount: 0, lastSyncError: null });
+    vi.mocked(useLiveQuery).mockReturnValue([activePlant]);
 
     const { wrapper } = createWrapper();
-    const { result } = renderHook(() => usePlants("garden-1"), { wrapper });
+    const { result } = renderHook(() => usePlants(), { wrapper });
 
-    expect(result.current.plants).toEqual([activePlant, archivedPlant]);
+    expect(result.current.plants).toEqual([activePlant]);
     expect(api.get).not.toHaveBeenCalled();
   });
 
@@ -129,9 +117,9 @@ describe("usePlants", () => {
     vi.mocked(api.delete).mockResolvedValue({ data: { ok: true } });
 
     const { wrapper } = createWrapper();
-    const { result } = renderHook(() => usePlants("garden-1"), { wrapper });
+    const { result } = renderHook(() => usePlants(), { wrapper });
 
-    await waitFor(() => expect(result.current.plants).toHaveLength(1));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
     await result.current.deletePlant.mutateAsync(activePlant.id);
 
     expect(db.plants.delete).toHaveBeenCalledWith(activePlant.id);

@@ -7,11 +7,12 @@ import fastifyMultipart from "@fastify/multipart";
 import { PrismaClient } from "@prisma/client";
 
 import prismaPlugin from "../plugins/prisma.js";
-import authPlugin from "../plugins/auth.js";
-import authRoutes from "../routes/auth.js";
-import gardenRoutes from "../routes/gardens.js";
+import plantRoutes from "../routes/plants.js";
 import careRoutes from "../routes/care.js";
 import identifyRoutes from "../routes/identify.js";
+import locationRoutes from "../routes/locations.js";
+import bootstrapRoutes from "../routes/bootstrap.js";
+import { ensureMvpContext } from "../utils/mvp.js";
 
 async function initializeTestDatabase(databaseUrl: string) {
   const migrationPath = path.resolve(
@@ -52,13 +53,11 @@ export async function createTestApp() {
 
   const previousEnv = {
     DATABASE_URL: process.env.DATABASE_URL,
-    JWT_SECRET: process.env.JWT_SECRET,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     UPLOAD_DIR: process.env.UPLOAD_DIR,
   };
 
   process.env.DATABASE_URL = databaseUrl;
-  process.env.JWT_SECRET = "test-secret";
   process.env.OPENAI_API_KEY = "test-openai-key";
   process.env.UPLOAD_DIR = uploadDir;
 
@@ -68,18 +67,19 @@ export async function createTestApp() {
   const app = Fastify({ logger: false });
 
   await app.register(fastifyCors, {
-    origin: "http://localhost:5173",
-    credentials: true,
+    origin: true,
+    credentials: false,
   });
   await app.register(fastifyMultipart, {
     limits: { fileSize: 10 * 1024 * 1024 },
   });
 
   await prismaPlugin(app, {});
-  await authPlugin(app, {});
+  await ensureMvpContext(app);
 
-  app.register(authRoutes, { prefix: "/api/auth" });
-  app.register(gardenRoutes, { prefix: "/api/gardens" });
+  app.register(bootstrapRoutes, { prefix: "/api" });
+  app.register(plantRoutes, { prefix: "/api/plants" });
+  app.register(locationRoutes, { prefix: "/api/locations" });
   app.register(careRoutes, { prefix: "/api/care" });
   app.register(identifyRoutes, { prefix: "/api/identify" });
 
@@ -89,39 +89,13 @@ export async function createTestApp() {
     await app.close();
 
     process.env.DATABASE_URL = previousEnv.DATABASE_URL;
-    process.env.JWT_SECRET = previousEnv.JWT_SECRET;
     process.env.OPENAI_API_KEY = previousEnv.OPENAI_API_KEY;
     process.env.UPLOAD_DIR = previousEnv.UPLOAD_DIR;
 
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 
-  return { app, cleanup, tempDir, uploadDir };
-}
-
-export async function registerUser(
-  app: Awaited<ReturnType<typeof createTestApp>>["app"],
-  {
-    email,
-    password = "password123",
-    name = "Test User",
-  }: { email: string; password?: string; name?: string }
-) {
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/auth/register",
-    payload: { email, password, name },
-  });
-
-  return {
-    response,
-    body: response.json(),
-    token: response.json().accessToken as string,
-  };
-}
-
-export function authHeader(token: string) {
-  return { authorization: `Bearer ${token}` };
+  return { app, cleanup };
 }
 
 export function buildMultipartBody(

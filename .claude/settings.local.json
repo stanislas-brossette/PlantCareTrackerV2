@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r VITE_API /home/stanislas.brossette/wdc_workspace/src/playground/PlantCareTrackerV2/ --include=*.ts --include=*.tsx --include=*.env*)",
+      "Bash(grep -r \"CORS\\\\|VITE_API\\\\|proxy\" /home/stanislas.brossette/wdc_workspace/src/playground/PlantCareTrackerV2/apps --include=*.ts --include=*.tsx --include=*.js)"
+    ]
+  }
+}

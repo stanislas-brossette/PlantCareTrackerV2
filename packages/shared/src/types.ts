@@ -1,29 +1,9 @@
-export type { CareType, EditableGardenRole, GardenRole } from "./schemas";
-import type { CareType, GardenRole } from "./schemas";
+export type { CareType } from "./schemas";
+import type { CareType } from "./schemas";
 
-// ─── Domain models ────────────────────────────────────────────────────────────
-
-export interface User {
-  id: string;
-  email: string;
-  name: string | null;
-  createdAt: string;
-}
-
-export interface Garden {
-  id: string;
-  name: string;
-  ownerId: string;
-  createdAt: string;
-  memberCount?: number;
-  plantCount?: number;
-}
-
-export interface GardenMember {
-  userId: string;
+export interface MvpContext {
   gardenId: string;
-  role: GardenRole;
-  user: Pick<User, "id" | "email" | "name">;
+  gardenName: string;
 }
 
 export interface Location {
@@ -39,7 +19,6 @@ export interface Plant {
   notes: string | null;
   wateringFreqDays: number | null;
   fertilizingFreqDays: number | null;
-  // 12-value arrays, one per month (index 0 = January)
   wateringFreqByMonth: number[] | null;
   fertilizingFreqByMonth: number[] | null;
   archived: boolean;
@@ -48,14 +27,17 @@ export interface Plant {
   location: Location | null;
   createdAt: string;
   updatedAt: string;
-  // computed fields returned by API
   lastWatered: string | null;
   lastFertilized: string | null;
   needsWatering: boolean;
   needsFertilizing: boolean;
-  // current month's effective frequency (computed by API)
   currentWateringFreq: number | null;
   currentFertilizingFreq: number | null;
+}
+
+export interface LocalPlant extends Plant {
+  cachedPhotoUrl?: string | null;
+  _localOnly?: boolean;
 }
 
 export interface CareEvent {
@@ -65,34 +47,6 @@ export interface CareEvent {
   userId: string;
   performedAt: string;
   note: string | null;
-  user?: Pick<User, "id" | "name" | "email">;
-}
-
-// ─── API payloads ─────────────────────────────────────────────────────────────
-
-export interface RegisterBody {
-  email: string;
-  password: string;
-  name?: string;
-}
-
-export interface LoginBody {
-  email: string;
-  password: string;
-}
-
-export interface AuthResponse {
-  user: User;
-  accessToken: string;
-}
-
-export interface CreateGardenBody {
-  name: string;
-}
-
-export interface InviteMemberBody {
-  email: string;
-  role: GardenRole;
 }
 
 export interface CreatePlantBody {
@@ -126,50 +80,35 @@ export interface UndoCareBody {
   type: CareType;
 }
 
-// ─── Offline sync types ───────────────────────────────────────────────────────
+export interface BootstrapPayload {
+  context: MvpContext;
+  plants: Plant[];
+  locations: Location[];
+  careEvents: CareEvent[];
+  generatedAt: string;
+}
+
+export interface ServerConfig {
+  serverHost: string;
+  serverPort: string;
+  protocol: "http" | "https";
+  lastSuccessfulSyncAt: string | null;
+}
 
 export type SyncAction =
   | { kind: "RECORD_CARE"; payload: RecordCareBody }
   | { kind: "UNDO_CARE"; payload: UndoCareBody }
-  | { kind: "CREATE_PLANT"; payload: CreatePlantBody & { gardenId: string; tempId: string } }
+  | { kind: "CREATE_PLANT"; payload: CreatePlantBody & { tempId: string } }
   | { kind: "UPDATE_PLANT"; payload: { id: string } & UpdatePlantBody }
   | { kind: "DELETE_PLANT"; payload: { id: string } }
-  | { kind: "CREATE_LOCATION"; payload: CreateLocationBody & { gardenId: string } }
-  | { kind: "DELETE_LOCATION"; payload: { id: string } };
+  | { kind: "CREATE_LOCATION"; payload: CreateLocationBody }
+  | { kind: "DELETE_LOCATION"; payload: { id: string } }
+  | { kind: "UPLOAD_PHOTO"; payload: { plantId: string; photoDataUrl: string; filename: string } };
 
 export interface PendingAction {
-  id: string; // local uuid
+  id: string;
   action: SyncAction;
   createdAt: string;
   retries: number;
-}
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
-
-export interface PlantStats {
-  plantId: string;
-  plantName: string;
-  wateringCount: number;
-  fertilizingCount: number;
-  avgWateringIntervalDays: number | null;
-  lastCare: string | null;
-  adherenceScore: number | null; // 0-100
-}
-
-export interface GardenStats {
-  totalPlants: number;
-  plantsNeedingAttention: number;
-  careEventsThisWeek: number;
-  careEventsThisMonth: number;
-  plantStats: PlantStats[];
-}
-
-// ─── Push notifications ───────────────────────────────────────────────────────
-
-export interface PushSubscriptionBody {
-  endpoint: string;
-  keys: {
-    p256dh: string;
-    auth: string;
-  };
+  lastError?: string | null;
 }
