@@ -5,10 +5,12 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    background: #f0fdf4;
   }
 
   body {
     @apply antialiased;
+    background: #f0fdf4;
   }
 
   /* Smooth scrolling */
@@ -19,6 +21,10 @@
   /* Better input appearance on iOS */
   input, select, textarea {
     -webkit-appearance: none;
+  }
+
+  body {
+    overscroll-behavior-y: contain;
   }
 }
 
@@ -31,4 +37,21 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+}
+
+@keyframes sync-bar-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  60% {
+    transform: translateX(180%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+.sync-bar-active {
+  animation: sync-bar-slide 1.35s ease-in-out infinite;
+  will-change: transform;
 }

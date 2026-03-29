@@ -1,12 +1,13 @@
-import { useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
-import { Home, Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
+import { Home, Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import toast from "react-hot-toast";
 import { usePlant, usePlants } from "../hooks/usePlants";
 import { useCareEvents, useRecordCare, useUndoCare } from "../hooks/useCare";
 import IdentifyModal from "../components/IdentifyModal";
+import { triggerLightHaptic } from "../lib/haptics";
 import { resolveAssetUrl } from "../lib/serverConfig";
 import { useOfflineStore } from "../stores/offline";
 import type { CareType } from "@plantcare/shared";
@@ -67,15 +68,57 @@ function ScheduleRow({
 export default function PlantDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: plant, isLoading } = usePlant(id);
   const { data: events = [] } = useCareEvents(id);
-  const { updatePlant, deletePlant } = usePlants();
+  const { plants, updatePlant, deletePlant } = usePlants();
   const recordCare = useRecordCare();
   const undoCare = useUndoCare();
   const isOnline = useOfflineStore((s) => s.isOnline);
+  const swipeStartX = useRef<number | null>(null);
+  const swipeStartY = useRef<number | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipeAnimatingBack, setIsSwipeAnimatingBack] = useState(false);
+  const [routeTransitionOffset, setRouteTransitionOffset] = useState(0);
 
   const [showIdentify, setShowIdentify] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+
+  useEffect(() => {
+    const direction =
+      (location.state as { direction?: "next" | "prev" } | null)?.direction ?? null;
+    if (!direction) {
+      setRouteTransitionOffset(0);
+      return;
+    }
+
+    setRouteTransitionOffset(direction === "next" ? 46 : -46);
+    const frame = requestAnimationFrame(() => {
+      setRouteTransitionOffset(0);
+    });
+    const timeout = window.setTimeout(() => {
+      navigate(location.pathname, { replace: true, state: null });
+    }, 230);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    setSwipeOffset(0);
+    setIsSwipeAnimatingBack(false);
+    setShowMenu(false);
+    setShowIdentify(false);
+  }, [id]);
+
+  const siblingPlants = plants
+    .filter((candidate) => candidate.archived === plant?.archived)
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  const currentIndex = siblingPlants.findIndex((candidate) => candidate.id === id);
+  const prevPlant = currentIndex > 0 ? siblingPlants[currentIndex - 1] : null;
+  const nextPlant = currentIndex >= 0 && currentIndex < siblingPlants.length - 1 ? siblingPlants[currentIndex + 1] : null;
 
   const handleCare = async (type: CareType) => {
     if (!id) return;
@@ -122,9 +165,96 @@ export default function PlantDetail() {
 
   const displayPhoto = plant.cachedPhotoUrl || resolveAssetUrl(plant.photoUrl);
 
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    swipeStartX.current = event.touches[0]?.clientX ?? null;
+    swipeStartY.current = event.touches[0]?.clientY ?? null;
+    setIsSwipeAnimatingBack(false);
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (showMenu || showIdentify || swipeStartX.current === null || swipeStartY.current === null) {
+      return;
+    }
+
+    const currentX = event.touches[0]?.clientX ?? 0;
+    const currentY = event.touches[0]?.clientY ?? 0;
+    const deltaX = currentX - swipeStartX.current;
+    const deltaY = currentY - swipeStartY.current;
+
+    if (Math.abs(deltaX) < Math.abs(deltaY)) {
+      setSwipeOffset(0);
+      return;
+    }
+
+    const canMovePrev = deltaX > 0 && prevPlant;
+    const canMoveNext = deltaX < 0 && nextPlant;
+    if (!canMovePrev && !canMoveNext) {
+      setSwipeOffset(deltaX * 0.12);
+      return;
+    }
+
+    setSwipeOffset(deltaX * 0.35);
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (showMenu || showIdentify || swipeStartX.current === null || swipeStartY.current === null) {
+      swipeStartX.current = null;
+      swipeStartY.current = null;
+      setSwipeOffset(0);
+      return;
+    }
+
+    const endX = event.changedTouches[0]?.clientX ?? 0;
+    const endY = event.changedTouches[0]?.clientY ?? 0;
+    const deltaX = endX - swipeStartX.current;
+    const deltaY = endY - swipeStartY.current;
+
+    swipeStartX.current = null;
+    swipeStartY.current = null;
+
+    if (Math.abs(deltaX) < 70 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      setIsSwipeAnimatingBack(true);
+      setSwipeOffset(0);
+      return;
+    }
+
+    if (deltaX < 0 && nextPlant) {
+      setSwipeOffset(0);
+      triggerLightHaptic();
+      navigate(`/plants/${nextPlant.id}`, { state: { direction: "next" } });
+    } else if (deltaX > 0 && prevPlant) {
+      setSwipeOffset(0);
+      triggerLightHaptic();
+      navigate(`/plants/${prevPlant.id}`, { state: { direction: "prev" } });
+    } else {
+      setIsSwipeAnimatingBack(true);
+      setSwipeOffset(0);
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div
+      className={`space-y-4 ${isSwipeAnimatingBack || routeTransitionOffset !== 0 ? "transition-[transform,opacity] duration-200 ease-out" : ""}`}
+      style={{
+        transform: `translateX(${swipeOffset + routeTransitionOffset}px)`,
+        opacity:
+          (1 - Math.min(Math.abs(swipeOffset) / 420, 0.18)) *
+          (1 - Math.min(Math.abs(routeTransitionOffset) / 340, 0.12)),
+      }}
+      onTransitionEnd={() => setIsSwipeAnimatingBack(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       <div className="relative rounded-2xl overflow-hidden bg-white shadow-sm dark:bg-gray-800">
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-16 bg-gradient-to-r from-white/32 to-transparent dark:from-gray-900/28"
+          style={{ opacity: prevPlant ? Math.min(Math.max(swipeOffset, 0) / 70, 1) : 0 }}
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-16 bg-gradient-to-l from-white/32 to-transparent dark:from-gray-900/28"
+          style={{ opacity: nextPlant ? Math.min(Math.max(-swipeOffset, 0) / 70, 1) : 0 }}
+        />
         {displayPhoto ? (
           <img src={displayPhoto} alt={plant.name} className="w-full object-cover max-h-72" />
         ) : (
@@ -165,7 +295,40 @@ export default function PlantDetail() {
             )}
           </div>
         </div>
+
+        {prevPlant && (
+          <button
+            onClick={() => {
+              triggerLightHaptic();
+              navigate(`/plants/${prevPlant.id}`, { state: { direction: "prev" } });
+            }}
+            className="absolute left-2 top-1/2 z-[2] -translate-y-1/2 rounded-full bg-black/30 p-2 text-white transition-all hover:bg-black/50"
+            style={{ opacity: 0.5 + Math.min(Math.max(swipeOffset, 0) / 90, 0.5), transform: `translateY(-50%) translateX(${Math.min(Math.max(swipeOffset, 0) / 10, 6)}px)` }}
+            aria-label={`Plante précédente: ${prevPlant.name}`}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
+        {nextPlant && (
+          <button
+            onClick={() => {
+              triggerLightHaptic();
+              navigate(`/plants/${nextPlant.id}`, { state: { direction: "next" } });
+            }}
+            className="absolute right-2 top-1/2 z-[2] -translate-y-1/2 rounded-full bg-black/30 p-2 text-white transition-all hover:bg-black/50"
+            style={{ opacity: 0.5 + Math.min(Math.max(-swipeOffset, 0) / 90, 0.5), transform: `translateY(-50%) translateX(${-Math.min(Math.max(-swipeOffset, 0) / 10, 6)}px)` }}
+            aria-label={`Plante suivante: ${nextPlant.name}`}
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
       </div>
+
+      {(prevPlant || nextPlant) && (
+        <div className="text-center text-xs text-gray-400">
+          Glisser horizontalement pour feuilleter les plantes
+        </div>
+      )}
 
       {plant.notes && (
         <div className="rounded-2xl bg-white p-4 text-sm text-gray-700 shadow-sm dark:bg-gray-800 dark:text-gray-200 whitespace-pre-line">

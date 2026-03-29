@@ -121,6 +121,20 @@ export async function flushPendingActions(
   return { success, failed };
 }
 
+export async function runFullResync() {
+  const bootstrap = await bootstrapFromServer();
+  const queued = await flushPendingActions();
+
+  if (queued.success > 0) {
+    await bootstrapFromServer();
+  }
+
+  return {
+    bootstrap,
+    queued,
+  };
+}
+
 export function initOfflineSync(onFlush?: (result: { success: number; failed: number }) => void) {
   const handleOnline = async () => {
     const result = await flushPendingActions();
