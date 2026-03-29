@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from "@capacitor/camera";
 import toast from "react-hot-toast";
 import MonthlyFreqEditor from "../components/MonthlyFreqEditor";
 import IdentifyModal from "../components/IdentifyModal";
@@ -38,6 +39,12 @@ function fileToDataUrl(file: Blob): Promise<string> {
   });
 }
 
+async function dataUrlToFile(dataUrl: string, filename: string) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
 export default function PlantForm() {
   const { id } = useParams<{ id?: string }>();
   const isEdit = Boolean(id && id !== "new");
@@ -64,6 +71,7 @@ export default function PlantForm() {
   const [saving, setSaving] = useState(false);
   const [showIdentifyModal, setShowIdentifyModal] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (existing && isEdit) {
@@ -78,10 +86,7 @@ export default function PlantForm() {
     }
   }, [existing, isEdit]);
 
-  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processPhotoFile = async (file: File) => {
     setPhotoFile(file);
     setShowIdentifyModal(true);
     setProcessingPhoto(true);
@@ -92,6 +97,42 @@ export default function PlantForm() {
       setPhotoPreview(dataUrl);
     } finally {
       setProcessingPhoto(false);
+    }
+  };
+
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      await processPhotoFile(file);
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const capture = await CapacitorCamera.getPhoto({
+        quality: 88,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+      });
+
+      if (!capture.dataUrl) {
+        toast.error("Aucune photo reçue");
+        return;
+      }
+
+      const file = await dataUrlToFile(capture.dataUrl, `plant-${Date.now()}.jpg`);
+      await processPhotoFile(file);
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("cancel")) {
+        return;
+      }
+      toast.error("Impossible d'ouvrir l'appareil photo");
     }
   };
 
@@ -171,7 +212,6 @@ export default function PlantForm() {
 
       <div
         className="relative w-full h-48 rounded-2xl overflow-hidden bg-green-100 dark:bg-green-900 cursor-pointer flex items-center justify-center"
-        onClick={() => fileRef.current?.click()}
       >
         {photoPreview ? (
           <img src={photoPreview} alt="" className="w-full h-full object-cover" />
@@ -189,8 +229,46 @@ export default function PlantForm() {
             </div>
           </div>
         )}
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhoto} />
       </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            void handleTakePhoto();
+          }}
+          className="flex items-center justify-center gap-2 rounded-2xl bg-green-600 px-4 py-3 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          disabled={processingPhoto}
+        >
+          <Camera className="h-4 w-4" />
+          Prendre une photo
+        </button>
+        <button
+          type="button"
+          onClick={() => galleryRef.current?.click()}
+          className="flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-medium text-gray-800 shadow-sm ring-1 ring-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-white dark:ring-gray-700 dark:hover:bg-gray-700"
+          disabled={processingPhoto}
+        >
+          <Camera className="h-4 w-4" />
+          Bibliothèque
+        </button>
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhoto}
+      />
+      <input
+        ref={galleryRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhoto}
+      />
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 space-y-4 shadow-sm">
         <div>
