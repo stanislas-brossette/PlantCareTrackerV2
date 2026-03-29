@@ -5,10 +5,8 @@ import { Toaster } from "react-hot-toast";
 
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useOfflineSync } from "./hooks/useOfflineSync";
-import { useAppStore } from "./stores/app";
 import Layout from "./components/Layout";
 
-const Setup = lazy(() => import("./pages/Setup"));
 const Home = lazy(() => import("./pages/Home"));
 const PlantDetail = lazy(() => import("./pages/PlantDetail"));
 const PlantForm = lazy(() => import("./pages/PlantForm"));
@@ -25,7 +23,6 @@ const queryClient = new QueryClient({
 });
 
 function AppRoutes() {
-  const { setupComplete, hasLocalData } = useAppStore();
   const { appReady } = useAppBootstrap();
   useOfflineSync();
 
@@ -33,29 +30,17 @@ function AppRoutes() {
     return <RouteFallback />;
   }
 
-  const canEnterApp = setupComplete || hasLocalData;
-
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        {!canEnterApp ? (
-          <>
-            <Route path="/setup" element={<Setup />} />
-            <Route path="*" element={<Navigate to="/setup" replace />} />
-          </>
-        ) : (
-          <>
-            <Route element={<Layout />}>
-              <Route index element={<Home />} />
-              <Route path="/plants/new" element={<PlantForm />} />
-              <Route path="/plants/:id" element={<PlantDetail />} />
-              <Route path="/plants/:id/edit" element={<PlantForm />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-            <Route path="/setup" element={<Setup />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
-        )}
+        <Route element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="/plants/new" element={<PlantForm />} />
+          <Route path="/plants/:id" element={<PlantDetail />} />
+          <Route path="/plants/:id/edit" element={<PlantForm />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
   );

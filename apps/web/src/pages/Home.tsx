@@ -65,7 +65,7 @@ export default function Home() {
       <div className="text-center py-16 text-gray-500">
         <p>Aucune donnée synchronisée.</p>
         <Link to="/settings" className="text-green-600 underline text-sm mt-2 block">
-          Configurer le serveur
+          Vérifier l'IP du serveur dans Réglages
         </Link>
       </div>
     );

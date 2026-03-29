@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+const DEFAULT_SERVER_HOST = "192.168.1.123";
+const DEFAULT_SERVER_PORT = "3000";
+
 interface AppState {
   gardenId: string | null;
   gardenName: string | null;
@@ -28,11 +31,11 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       gardenId: null,
       gardenName: null,
-      serverHost: "",
-      serverPort: "3000",
+      serverHost: DEFAULT_SERVER_HOST,
+      serverPort: DEFAULT_SERVER_PORT,
       protocol: "http",
       lastSuccessfulSyncAt: null,
-      setupComplete: false,
+      setupComplete: true,
       hasHydrated: false,
       hasLocalData: false,
       setGardenContext: (gardenId, gardenName) => set({ gardenId, gardenName }),
