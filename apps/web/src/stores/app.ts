@@ -51,7 +51,7 @@ export const useAppStore = create<AppState>()(
       setHasLocalData: (hasLocalData) => set({ hasLocalData }),
     }),
     {
-      name: "plantcare-app",
+      name: "plantcaretrackerv2-app",
       onRehydrateStorage: () => (state) => {
         state?.markHydrated();
       },

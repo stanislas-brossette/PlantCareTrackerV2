@@ -20,6 +20,7 @@ vi.mock("../lib/db", () => ({
   db: {
     plants: {
       delete: vi.fn(),
+      put: vi.fn(),
       toArray: vi.fn().mockResolvedValue([]),
     },
   },
@@ -110,6 +111,22 @@ describe("usePlants", () => {
     expect(api.get).not.toHaveBeenCalled();
   });
 
+  it("preserves locally cached photos while online", async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: [{ ...activePlant, cachedPhotoUrl: null }] })
+      .mockResolvedValueOnce({ data: [] });
+    vi.mocked(useLiveQuery).mockReturnValue([
+      { ...activePlant, cachedPhotoUrl: "data:image/jpeg;base64,abc123" },
+    ]);
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePlants(), { wrapper });
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+
+    expect(result.current.plants[0]?.cachedPhotoUrl).toBe("data:image/jpeg;base64,abc123");
+  });
+
   it("deletes locally first, then calls the API when online", async () => {
     vi.mocked(api.get)
       .mockResolvedValueOnce({ data: [activePlant] })
@@ -124,5 +141,21 @@ describe("usePlants", () => {
 
     expect(db.plants.delete).toHaveBeenCalledWith(activePlant.id);
     expect(api.delete).toHaveBeenCalledWith(`/plants/${activePlant.id}`);
+  });
+
+  it("stores a newly created online plant locally right away", async () => {
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: [activePlant] })
+      .mockResolvedValueOnce({ data: [] });
+    vi.mocked(api.post).mockResolvedValue({ data: activePlant });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePlants(), { wrapper });
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    await result.current.createPlant.mutateAsync({ name: "Monstera" });
+
+    expect(api.post).toHaveBeenCalledWith("/plants", { name: "Monstera" });
+    expect(db.plants.put).toHaveBeenCalledWith(activePlant);
   });
 });

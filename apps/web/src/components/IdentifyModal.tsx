@@ -161,7 +161,7 @@ export default function IdentifyModal(props: Props) {
       <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-purple-500" />
+            <Sparkles className="w-5 h-5 text-amber-500" />
             <h2 className="font-semibold text-gray-900 dark:text-white">
               Identification IA
             </h2>
@@ -179,7 +179,7 @@ export default function IdentifyModal(props: Props) {
               </p>
               <button
                 onClick={identify}
-                className="bg-purple-600 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-purple-700 transition-colors"
+                className="bg-[#0b6b5d] text-white px-6 py-2.5 rounded-xl font-medium hover:bg-[#09584d] transition-colors"
               >
                 Identifier
               </button>
@@ -249,7 +249,7 @@ export default function IdentifyModal(props: Props) {
                     {monthLabels.map((month, index) => (
                       <div key={index} className="flex flex-col items-center">
                         <span className="text-[10px] text-gray-400">{month}</span>
-                        <span className="text-xs font-mono text-green-600 dark:text-green-400">
+                        <span className="text-xs font-mono text-[#0b6b5d] dark:text-amber-300">
                           {result.fertilisation_freq_par_mois?.[index] ?? "?"}
                         </span>
                       </div>
@@ -283,7 +283,7 @@ export default function IdentifyModal(props: Props) {
               <button
                 onClick={() => applySection("planning")}
                 disabled={applying !== null}
-                className="py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                className="py-2.5 bg-[#0b6b5d] text-white rounded-xl text-sm font-medium hover:bg-[#09584d] disabled:opacity-50"
               >
                 {applying === "planning" ? "Application..." : "Appliquer les plannings"}
               </button>

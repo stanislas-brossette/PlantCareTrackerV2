@@ -71,18 +71,18 @@ export default function Settings() {
           value={host}
           onChange={(e) => setHost(e.target.value)}
           placeholder="192.168.1.42"
-          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-700"
+          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-gray-700 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
         />
         <input
           value={port}
           onChange={(e) => setPort(e.target.value)}
           placeholder="3000"
-          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-700"
+          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-gray-700 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
         />
         <button
           onClick={handleSaveServer}
           disabled={testing}
-          className="w-full rounded-xl bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          className="w-full rounded-xl bg-[#0b6b5d] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#09584d] disabled:opacity-60"
         >
           {testing ? "Test..." : "Tester et enregistrer"}
         </button>
@@ -125,9 +125,9 @@ export default function Settings() {
             onChange={(e) => setNewLocName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAddLocation()}
             placeholder="Salon, Cuisine..."
-            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700"
+            className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
           />
-          <button onClick={handleAddLocation} className="bg-green-600 text-white px-4 rounded-xl hover:bg-green-700">
+          <button onClick={handleAddLocation} className="rounded-xl bg-[#0b6b5d] px-4 text-white hover:bg-[#09584d]">
             +
           </button>
         </div>

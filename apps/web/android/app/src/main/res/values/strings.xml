@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">PlantCare</string>
-    <string name="title_activity_main">PlantCare</string>
+    <string name="app_name">PlantCareTrackerV2</string>
+    <string name="title_activity_main">PlantCareTrackerV2</string>
     <string name="package_name">local.plantcare.tracker</string>
     <string name="custom_url_scheme">local.plantcare.tracker</string>
 </resources>

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "local.plantcare.tracker",
-  appName: "PlantCare",
+  appName: "PlantCareTrackerV2",
   webDir: "dist",
   bundledWebRuntime: false,
   android: {

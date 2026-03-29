@@ -32,10 +32,10 @@ export default function Setup() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-100 via-lime-50 to-white px-4 py-10">
-      <div className="mx-auto max-w-md rounded-3xl bg-white/90 p-6 shadow-xl shadow-green-900/10">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-100 via-lime-50 to-amber-50 px-4 py-10">
+      <div className="mx-auto max-w-md rounded-3xl bg-white/90 p-6 shadow-xl shadow-[#053c35]/10">
         <div className="mb-6 flex items-center gap-3">
-          <div className="rounded-2xl bg-green-600 p-3 text-white">
+          <div className="rounded-2xl bg-[#0b6b5d] p-3 text-white">
             <Wifi className="h-6 w-6" />
           </div>
           <div>
@@ -51,7 +51,7 @@ export default function Setup() {
               value={host}
               onChange={(e) => setHost(e.target.value)}
               placeholder="192.168.1.42"
-              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+              className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0b6b5d] focus:outline-none focus:ring-2 focus:ring-[#0b6b5d]/20"
             />
           </div>
 
@@ -61,14 +61,14 @@ export default function Setup() {
               value={port}
               onChange={(e) => setPort(e.target.value)}
               placeholder="3000"
-              className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500/20"
+              className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0b6b5d] focus:outline-none focus:ring-2 focus:ring-[#0b6b5d]/20"
             />
           </div>
 
           <button
             onClick={handleTest}
             disabled={testing || !host.trim()}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 px-4 py-3 font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b6b5d] px-4 py-3 font-medium text-white hover:bg-[#09584d] disabled:opacity-60"
           >
             {testing && <Loader2 className="h-4 w-4 animate-spin" />}
             Tester et synchroniser

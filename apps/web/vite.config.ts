@@ -9,11 +9,11 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "icons/*.png"],
       manifest: {
-        name: "PlantCare Tracker",
-        short_name: "PlantCare",
+        name: "PlantCareTrackerV2",
+        short_name: "PCTV2",
         description: "Suivez l'entretien de vos plantes",
-        theme_color: "#16a34a",
-        background_color: "#f0fdf4",
+        theme_color: "#065f55",
+        background_color: "#f7f6ef",
         display: "standalone",
         start_url: "/",
         icons: [

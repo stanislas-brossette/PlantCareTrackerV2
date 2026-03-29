@@ -32,7 +32,12 @@ export async function hydrateBootstrapToLocal(snapshot: BootstrapPayload) {
 }
 
 export async function syncPlantsToLocal(plants: LocalPlant[]) {
-  await db.plants.bulkPut(plants);
+  const existing = await db.plants.bulkGet(plants.map((p) => p.id));
+  const toStore = plants.map((plant, i) => ({
+    ...plant,
+    cachedPhotoUrl: plant.cachedPhotoUrl ?? existing[i]?.cachedPhotoUrl ?? null,
+  }));
+  await db.plants.bulkPut(toStore);
 }
 
 export async function syncCareEventsToLocal(events: CareEvent[]) {

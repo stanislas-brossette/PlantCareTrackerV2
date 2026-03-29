@@ -6,6 +6,23 @@ import { cachePhotoForPlant } from "../lib/photos";
 import { useOfflineStore } from "../stores/offline";
 import type { CreatePlantBody, LocalPlant, Plant, UpdatePlantBody } from "@plantcare/shared";
 
+function mergeWithLocalPlants(remotePlants: LocalPlant[] | undefined, localPlants: LocalPlant[]) {
+  if (!remotePlants) return localPlants;
+
+  const localById = new Map(localPlants.map((plant) => [plant.id, plant]));
+  return remotePlants.map((plant) => {
+    const localPlant = localById.get(plant.id);
+    if (!localPlant) return plant;
+
+    return {
+      ...plant,
+      cachedPhotoUrl: localPlant.cachedPhotoUrl ?? plant.cachedPhotoUrl ?? null,
+      photoUrl: localPlant.photoUrl ?? plant.photoUrl,
+      _localOnly: localPlant._localOnly ?? plant._localOnly,
+    };
+  });
+}
+
 export function usePlants() {
   const isOnline = useOfflineStore((s) => s.isOnline);
   const qc = useQueryClient();
@@ -27,7 +44,7 @@ export function usePlants() {
   });
 
   const localPlants = useLiveQuery(() => db.plants.toArray(), []) ?? [];
-  const plants = isOnline ? query.data ?? localPlants : localPlants;
+  const plants = isOnline ? mergeWithLocalPlants(query.data, localPlants) : localPlants;
 
   const createPlant = useMutation({
     mutationFn: async (body: CreatePlantBody) => {
@@ -62,9 +79,18 @@ export function usePlants() {
         return tempPlant;
       }
       const res = await api.post<Plant>("/plants", body);
-      return res.data as LocalPlant;
+      const createdPlant = res.data as LocalPlant;
+      await db.plants.put(createdPlant);
+      return createdPlant;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["plants"] }),
+    onSuccess: (createdPlant) => {
+      qc.setQueryData<LocalPlant[] | undefined>(["plants"], (current) => {
+        if (!current) return current;
+        const withoutExisting = current.filter((plant) => plant.id !== createdPlant.id);
+        return [...withoutExisting, createdPlant];
+      });
+      qc.invalidateQueries({ queryKey: ["plants"] });
+    },
   });
 
   const updatePlant = useMutation({
@@ -105,8 +131,14 @@ export function usePlant(id: string | undefined) {
         return db.plants.get(id!) as Promise<LocalPlant>;
       }
       const res = await api.get<Plant>(`/plants/${id}`);
-      await db.plants.put(res.data as LocalPlant);
-      return res.data as LocalPlant;
+      const remotePlant = res.data as LocalPlant;
+      const localPlant = await db.plants.get(id!);
+      const mergedPlant = {
+        ...remotePlant,
+        cachedPhotoUrl: localPlant?.cachedPhotoUrl ?? remotePlant.cachedPhotoUrl ?? null,
+      };
+      await db.plants.put(mergedPlant);
+      return mergedPlant;
     },
     enabled: !!id,
   });

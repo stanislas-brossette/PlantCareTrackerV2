@@ -64,7 +64,7 @@ export default function Home() {
     return (
       <div className="text-center py-16 text-gray-500">
         <p>Aucune donnée synchronisée.</p>
-        <Link to="/settings" className="text-green-600 underline text-sm mt-2 block">
+        <Link to="/settings" className="text-[#0b6b5d] underline text-sm mt-2 block">
           Vérifier l'IP du serveur dans Réglages
         </Link>
       </div>
@@ -93,7 +93,7 @@ export default function Home() {
         </div>
         <Link
           to="/plants/new"
-          className="bg-green-600 text-white p-2.5 rounded-xl hover:bg-green-700 transition-colors flex-shrink-0 shadow-sm shadow-green-900/10"
+          className="bg-[#0b6b5d] text-white p-2.5 rounded-xl hover:bg-[#09584d] transition-colors flex-shrink-0 shadow-sm shadow-[#053c35]/10"
           aria-label="Ajouter une plante"
         >
           <Plus className="w-5 h-5" />
@@ -114,7 +114,7 @@ export default function Home() {
             placeholder="Rechercher une plante..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 bg-transparent border border-gray-200 dark:border-gray-700 rounded-full text-sm text-gray-600 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-500/40"
+            className="w-full h-9 rounded-full border border-gray-200 bg-transparent pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 dark:border-gray-700 dark:text-gray-200 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#0b6b5d]/30 focus:border-[#0b6b5d]/40"
           />
         </div>
 
@@ -160,7 +160,7 @@ export default function Home() {
           {!search && (
             <Link
               to="/plants/new"
-              className="mt-4 inline-flex items-center gap-2 bg-green-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700"
+              className="mt-4 inline-flex items-center gap-2 bg-[#0b6b5d] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#09584d]"
             >
               <Plus className="w-4 h-4" />
               Ajouter une plante
