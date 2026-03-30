@@ -38,7 +38,7 @@ export function useCreateLocation() {
           gardenId: "local-garden",
         };
         await db.locations.add(location);
-        await queueAction({ kind: "CREATE_LOCATION", payload: { name } });
+        await queueAction({ kind: "CREATE_LOCATION", payload: { tempId: location.id, name } });
         return location;
       }
       return api.post<Location>("/locations", { name }).then((r) => r.data);

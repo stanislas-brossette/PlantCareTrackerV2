@@ -5,6 +5,11 @@ import { db, queueAction, syncCareEventsToLocal } from "../lib/db";
 import { useOfflineStore } from "../stores/offline";
 import type { CareEvent, CareType } from "@plantcare/shared";
 
+function daysSince(date: string | null) {
+  if (!date) return Infinity;
+  return (Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24);
+}
+
 export function useCareEvents(plantId: string | undefined) {
   const isOnline = useOfflineStore((s) => s.isOnline);
   const localEvents =
@@ -102,6 +107,39 @@ export function useUndoCare() {
           )[0];
           await db.careEvents.delete(last.id);
         }
+
+        const plant = await db.plants.get(plantId);
+        if (plant) {
+          const remainingEvents = await db.careEvents
+            .where("plantId")
+            .equals(plantId)
+            .filter((event) => event.type === type)
+            .toArray();
+
+          const latestRemaining = remainingEvents.sort(
+            (a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()
+          )[0] ?? null;
+
+          if (type === "WATERING") {
+            const lastWatered = latestRemaining?.performedAt ?? null;
+            await db.plants.update(plantId, {
+              lastWatered,
+              needsWatering:
+                plant.currentWateringFreq != null && daysSince(lastWatered) >= plant.currentWateringFreq,
+            });
+          }
+
+          if (type === "FERTILIZING") {
+            const lastFertilized = latestRemaining?.performedAt ?? null;
+            await db.plants.update(plantId, {
+              lastFertilized,
+              needsFertilizing:
+                plant.currentFertilizingFreq != null &&
+                daysSince(lastFertilized) >= plant.currentFertilizingFreq,
+            });
+          }
+        }
+
         await queueAction({ kind: "UNDO_CARE", payload: { plantId, type } });
         return;
       }

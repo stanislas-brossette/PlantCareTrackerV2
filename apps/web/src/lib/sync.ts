@@ -1,13 +1,173 @@
 import api from "./api";
 import { db, hydrateBootstrapToLocal, removeAction } from "./db";
 import { cacheAllPlantPhotos, uploadPhotoDataUrl } from "./photos";
-import type { BootstrapPayload, PendingAction } from "@plantcare/shared";
+import type { BootstrapPayload, Location, PendingAction } from "@plantcare/shared";
 import { useAppStore } from "../stores/app";
 
 const MAX_RETRIES = 5;
 
-async function executeAction(pending: PendingAction): Promise<void> {
-  const { action } = pending;
+type IdRemapState = {
+  plantIds: Map<string, string>;
+  locationIds: Map<string, string>;
+};
+
+function isTerminalFailure(lastError: string | null | undefined) {
+  return (
+    lastError?.startsWith("Permanent failure") === true ||
+    lastError === "Exceeded retry budget"
+  );
+}
+
+function remapAction(action: PendingAction["action"], remaps: IdRemapState): PendingAction["action"] {
+  switch (action.kind) {
+    case "RECORD_CARE":
+      return {
+        kind: "RECORD_CARE",
+        payload: {
+          ...action.payload,
+          plantId: remaps.plantIds.get(action.payload.plantId) ?? action.payload.plantId,
+        },
+      };
+    case "UNDO_CARE":
+      return {
+        kind: "UNDO_CARE",
+        payload: {
+          ...action.payload,
+          plantId: remaps.plantIds.get(action.payload.plantId) ?? action.payload.plantId,
+        },
+      };
+    case "CREATE_PLANT":
+      return {
+        kind: "CREATE_PLANT",
+        payload: {
+          ...action.payload,
+          locationId: action.payload.locationId
+            ? remaps.locationIds.get(action.payload.locationId) ?? action.payload.locationId
+            : action.payload.locationId,
+        },
+      };
+    case "UPDATE_PLANT":
+      return {
+        kind: "UPDATE_PLANT",
+        payload: {
+          ...action.payload,
+          id: remaps.plantIds.get(action.payload.id) ?? action.payload.id,
+          locationId: action.payload.locationId
+            ? remaps.locationIds.get(action.payload.locationId) ?? action.payload.locationId
+            : action.payload.locationId,
+        },
+      };
+    case "DELETE_PLANT":
+      return {
+        kind: "DELETE_PLANT",
+        payload: {
+          id: remaps.plantIds.get(action.payload.id) ?? action.payload.id,
+        },
+      };
+    case "CREATE_LOCATION":
+      return action;
+    case "DELETE_LOCATION":
+      return {
+        kind: "DELETE_LOCATION",
+        payload: {
+          id: remaps.locationIds.get(action.payload.id) ?? action.payload.id,
+        },
+      };
+    case "UPLOAD_PHOTO":
+      return {
+        kind: "UPLOAD_PHOTO",
+        payload: {
+          ...action.payload,
+          plantId: remaps.plantIds.get(action.payload.plantId) ?? action.payload.plantId,
+        },
+      };
+  }
+}
+
+async function replacePlantIdReferences(tempId: string, serverId: string) {
+  const [localPlant, careEvents, pendingActions] = await Promise.all([
+    db.plants.get(tempId),
+    db.careEvents.where("plantId").equals(tempId).toArray(),
+    db.pendingActions.toArray(),
+  ]);
+
+  if (localPlant) {
+    await db.plants.delete(tempId);
+    await db.plants.put({
+      ...localPlant,
+      id: serverId,
+      _localOnly: false,
+    });
+  }
+
+  await Promise.all(
+    careEvents.map((event) =>
+      db.careEvents.put({
+        ...event,
+        plantId: serverId,
+      }),
+    ),
+  );
+
+  await Promise.all(
+    pendingActions.map(async (pending) => {
+      const remapped = remapAction(pending.action, {
+        plantIds: new Map([[tempId, serverId]]),
+        locationIds: new Map(),
+      });
+
+      if (JSON.stringify(remapped) !== JSON.stringify(pending.action)) {
+        await db.pendingActions.update(pending.id, {
+          action: remapped,
+        });
+      }
+    }),
+  );
+}
+
+async function replaceLocationIdReferences(tempId: string, location: Location) {
+  const [pendingActions, plants] = await Promise.all([
+    db.pendingActions.toArray(),
+    db.plants.where("locationId").equals(tempId).toArray(),
+  ]);
+
+  await db.locations.delete(tempId);
+  await db.locations.put(location);
+
+  await Promise.all(
+    plants.map((plant) =>
+      db.plants.put({
+        ...plant,
+        locationId: location.id,
+        location,
+      }),
+    ),
+  );
+
+  await Promise.all(
+    pendingActions.map(async (pending) => {
+      const remapped = remapAction(pending.action, {
+        plantIds: new Map(),
+        locationIds: new Map([[tempId, location.id]]),
+      });
+
+      if (JSON.stringify(remapped) !== JSON.stringify(pending.action)) {
+        await db.pendingActions.update(pending.id, {
+          action: remapped,
+        });
+      }
+    }),
+  );
+}
+
+async function executeAction(pending: PendingAction, remaps: IdRemapState): Promise<void> {
+  const action = remapAction(pending.action, remaps);
+
+  if (JSON.stringify(action) !== JSON.stringify(pending.action)) {
+    await db.pendingActions.update(pending.id, {
+      action,
+    });
+  }
 
   switch (action.kind) {
     case "RECORD_CARE":
@@ -21,15 +181,8 @@ async function executeAction(pending: PendingAction): Promise<void> {
     case "CREATE_PLANT": {
       const { tempId, ...payload } = action.payload;
       const res = await api.post<{ id: string }>("/plants", payload);
-      const localPlant = await db.plants.get(tempId);
-      await db.plants.delete(tempId);
-      if (localPlant) {
-        await db.plants.put({
-          ...localPlant,
-          id: res.data.id,
-          _localOnly: false,
-        });
-      }
+      remaps.plantIds.set(tempId, res.data.id);
+      await replacePlantIdReferences(tempId, res.data.id);
       break;
     }
     case "UPDATE_PLANT": {
@@ -40,9 +193,13 @@ async function executeAction(pending: PendingAction): Promise<void> {
     case "DELETE_PLANT":
       await api.delete(`/plants/${action.payload.id}`);
       break;
-    case "CREATE_LOCATION":
-      await api.post("/locations", action.payload);
+    case "CREATE_LOCATION": {
+      const { tempId, ...payload } = action.payload;
+      const res = await api.post<Location>("/locations", payload);
+      remaps.locationIds.set(tempId, res.data.id);
+      await replaceLocationIdReferences(tempId, res.data);
       break;
+    }
     case "DELETE_LOCATION":
       await api.delete(`/locations/${action.payload.id}`);
       break;
@@ -65,28 +222,36 @@ export async function bootstrapFromServer() {
   return res.data;
 }
 
-export async function checkServerHealth() {
+export async function checkServerHealth(timeout = 1500) {
   const res = await api.get<{
     ok: boolean;
     ts: string;
     gardenId: string;
     gardenName: string;
-  }>("/health");
+  }>("/health", {
+    timeout,
+  });
   return res.data;
 }
 
 export async function flushPendingActions(
   onProgress?: (done: number, total: number) => void
-): Promise<{ success: number; failed: number }> {
-  const pending = await db.pendingActions.orderBy("createdAt").toArray();
-  if (pending.length === 0) return { success: 0, failed: 0 };
+): Promise<{ success: number; failed: number; remaining: number }> {
+  const allPending = await db.pendingActions.orderBy("createdAt").toArray();
+  const pending = allPending.filter((action) => !isTerminalFailure(action.lastError));
+  if (allPending.length === 0) return { success: 0, failed: 0, remaining: 0 };
+  if (pending.length === 0) return { success: 0, failed: 0, remaining: allPending.length };
 
   let success = 0;
   let failed = 0;
+  const remaps: IdRemapState = {
+    plantIds: new Map(),
+    locationIds: new Map(),
+  };
 
   for (const action of pending) {
     try {
-      await executeAction(action);
+      await executeAction(action, remaps);
       await removeAction(action.id);
       success++;
     } catch (err: unknown) {
@@ -94,14 +259,14 @@ export async function flushPendingActions(
       if (status && status >= 400 && status < 500) {
         await db.pendingActions.update(action.id, {
           lastError: `Permanent failure (${status})`,
+          retries: action.retries + 1,
         });
-        await removeAction(action.id);
         failed++;
-      } else if (action.retries >= MAX_RETRIES) {
+      } else if (action.retries + 1 >= MAX_RETRIES) {
         await db.pendingActions.update(action.id, {
           lastError: "Exceeded retry budget",
+          retries: action.retries + 1,
         });
-        await removeAction(action.id);
         failed++;
       } else {
         await db.pendingActions.update(action.id, {
@@ -114,20 +279,14 @@ export async function flushPendingActions(
     onProgress?.(success + failed, pending.length);
   }
 
-  if (success > 0) {
-    await bootstrapFromServer();
-  }
-
-  return { success, failed };
+  const remaining = await db.pendingActions.count();
+  return { success, failed, remaining };
 }
 
 export async function runFullResync() {
-  const bootstrap = await bootstrapFromServer();
+  await checkServerHealth();
   const queued = await flushPendingActions();
-
-  if (queued.success > 0) {
-    await bootstrapFromServer();
-  }
+  const bootstrap = queued.remaining === 0 ? await bootstrapFromServer() : null;
 
   return {
     bootstrap,

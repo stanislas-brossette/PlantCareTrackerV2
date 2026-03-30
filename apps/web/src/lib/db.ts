@@ -64,6 +64,10 @@ export async function removeAction(id: string) {
   await db.pendingActions.delete(id);
 }
 
+export async function clearPendingActions() {
+  await db.pendingActions.clear();
+}
+
 export async function getLocalSnapshotInfo() {
   const [plantCount, locationCount, careEventCount, firstPlant] = await Promise.all([
     db.plants.count(),

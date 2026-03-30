@@ -3,6 +3,7 @@ import { getApiBaseUrl } from "./serverConfig";
 
 const api = axios.create({
   withCredentials: false,
+  timeout: 4000,
 });
 
 api.interceptors.request.use((config) => {

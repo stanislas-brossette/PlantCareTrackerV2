@@ -68,7 +68,7 @@ describe("useOfflineSync", () => {
       gardenName: "Maison",
     });
     vi.mocked(bootstrapFromServer).mockResolvedValue({} as never);
-    vi.mocked(flushPendingActions).mockResolvedValue({ success: 0, failed: 0 });
+    vi.mocked(flushPendingActions).mockResolvedValue({ success: 0, failed: 0, remaining: 0 });
 
     const { wrapper } = createWrapper();
     renderHook(() => useOfflineSync(), { wrapper });
@@ -76,6 +76,26 @@ describe("useOfflineSync", () => {
     await waitFor(() => expect(useOfflineStore.getState().isOnline).toBe(true));
     expect(checkServerHealth).toHaveBeenCalled();
     expect(bootstrapFromServer).toHaveBeenCalled();
+  });
+
+  it("does not bootstrap while pending actions still remain unresolved", async () => {
+    vi.mocked(checkServerHealth).mockResolvedValue({
+      ok: true,
+      ts: new Date().toISOString(),
+      gardenId: "garden-1",
+      gardenName: "Maison",
+    });
+    vi.mocked(flushPendingActions).mockResolvedValue({ success: 1, failed: 1, remaining: 1 });
+
+    const { wrapper } = createWrapper();
+    renderHook(() => useOfflineSync(), { wrapper });
+
+    await waitFor(() =>
+      expect(useOfflineStore.getState().lastSyncError).toBe("1 action(s) en attente ou en échec"),
+    );
+
+    expect(bootstrapFromServer).not.toHaveBeenCalled();
+    expect(useOfflineStore.getState().isOnline).toBe(true);
   });
 
   it("stays offline and skips bootstrap when the Pi is unreachable", async () => {

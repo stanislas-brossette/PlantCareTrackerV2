@@ -101,7 +101,7 @@ export type SyncAction =
   | { kind: "CREATE_PLANT"; payload: CreatePlantBody & { tempId: string } }
   | { kind: "UPDATE_PLANT"; payload: { id: string } & UpdatePlantBody }
   | { kind: "DELETE_PLANT"; payload: { id: string } }
-  | { kind: "CREATE_LOCATION"; payload: CreateLocationBody }
+  | { kind: "CREATE_LOCATION"; payload: CreateLocationBody & { tempId: string } }
   | { kind: "DELETE_LOCATION"; payload: { id: string } }
   | { kind: "UPLOAD_PHOTO"; payload: { plantId: string; photoDataUrl: string; filename: string } };
 

@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Loader2, MapPin, Moon, RefreshCw, Server, Sun, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../lib/api";
-import { bootstrapFromServer } from "../lib/sync";
+import { clearPendingActions } from "../lib/db";
+import { runFullResync } from "../lib/sync";
 import { useCreateLocation, useDeleteLocation, useLocations } from "../hooks/useGarden";
 import { useAppStore } from "../stores/app";
 import { useOfflineStore } from "../stores/offline";
@@ -50,10 +51,15 @@ export default function Settings() {
   const handleResync = async () => {
     setResyncing(true);
     try {
-      await bootstrapFromServer();
+      const result = await runFullResync();
       setOnline(true);
-      setLastSyncError(null);
-      toast.success("Synchronisation complète terminée");
+      if (result.queued.remaining === 0) {
+        setLastSyncError(null);
+        toast.success("Synchronisation complète terminée");
+      } else {
+        setLastSyncError(`${result.queued.remaining} action(s) encore en attente`);
+        toast.error(`${result.queued.remaining} action(s) encore en attente`);
+      }
     } catch {
       setOnline(false);
       toast.error("Resynchronisation impossible");
@@ -67,6 +73,17 @@ export default function Settings() {
     await createLocation.mutateAsync(newLocName.trim());
     setNewLocName("");
     toast.success("Emplacement créé");
+  };
+
+  const handleClearPending = async () => {
+    const confirmed = window.confirm(
+      "Supprimer toutes les actions en attente ? Cette opération ne peut pas être annulée."
+    );
+    if (!confirmed) return;
+
+    await clearPendingActions();
+    setLastSyncError(null);
+    toast.success("File de synchronisation vidée");
   };
 
   return (
@@ -146,6 +163,16 @@ export default function Settings() {
           Dernière sync : {lastSuccessfulSyncAt ? new Date(lastSuccessfulSyncAt).toLocaleString("fr-FR") : "jamais"}
         </div>
         <div className="text-xs text-gray-500">Actions en attente : {pendingCount}</div>
+        {pendingCount > 0 && (
+          <button
+            onClick={() => {
+              void handleClearPending();
+            }}
+            className="w-full rounded-xl border border-red-200 px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-300 dark:hover:bg-red-950/30"
+          >
+            Vider la file d'actions
+          </button>
+        )}
       </section>
 
       <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">

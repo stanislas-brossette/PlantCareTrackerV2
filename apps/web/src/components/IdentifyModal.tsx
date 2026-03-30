@@ -113,6 +113,7 @@ function buildPlantPatch(
 }
 
 export default function IdentifyModal(props: Props) {
+  const identifyRequestConfig = { timeout: 45_000 };
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState<"name" | "details" | "planning" | "all" | null>(null);
@@ -154,17 +155,24 @@ export default function IdentifyModal(props: Props) {
       if (isDraftMode(props)) {
         const form = new FormData();
         form.append("file", props.imageFile);
-        const res = await api.post<{ identification: IdentificationResult }>("/identify/preview", form);
+        const res = await api.post<{ identification: IdentificationResult }>(
+          "/identify/preview",
+          form,
+          identifyRequestConfig,
+        );
         setResult(res.data.identification);
       } else {
         const res = await api.post<{ identification: IdentificationResult }>(
-          `/identify/${props.plantId}`
+          `/identify/${props.plantId}`,
+          undefined,
+          identifyRequestConfig,
         );
         setResult(res.data.identification);
       }
     } catch (err: unknown) {
-      const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
-      setError(message || "Erreur lors de l'identification");
+      const responseMessage = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      const requestMessage = err instanceof Error ? err.message : null;
+      setError(responseMessage || requestMessage || "Erreur lors de l'identification");
     } finally {
       setLoading(false);
     }
@@ -213,8 +221,9 @@ export default function IdentifyModal(props: Props) {
         props.onApplied?.();
       }
     } catch (err: unknown) {
-      const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
-      setError(message || "Erreur lors de l'application");
+      const responseMessage = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      const requestMessage = err instanceof Error ? err.message : null;
+      setError(responseMessage || requestMessage || "Erreur lors de l'application");
     } finally {
       setApplying(null);
     }
@@ -267,8 +276,9 @@ export default function IdentifyModal(props: Props) {
         props.onClose();
       }
     } catch (err: unknown) {
-      const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
-      setError(message || "Erreur lors de l'application");
+      const responseMessage = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      const requestMessage = err instanceof Error ? err.message : null;
+      setError(responseMessage || requestMessage || "Erreur lors de l'application");
     } finally {
       setApplying(null);
     }

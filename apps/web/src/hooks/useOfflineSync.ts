@@ -40,17 +40,23 @@ export function useOfflineSync() {
         if (cancelled) return;
         setOnline(true);
         setLastSyncError(null);
-        await bootstrapFromServer();
-        if (cancelled) return;
-        qc.invalidateQueries();
         const result = await flushPendingActions();
         if (cancelled) return;
+        if (result.remaining === 0) {
+          await bootstrapFromServer();
+          if (cancelled) return;
+          qc.invalidateQueries();
+        }
         if (result.success > 0) {
           toast.success(`${result.success} action(s) synchronisée(s)`);
         }
-        if (result.failed > 0) {
-          setLastSyncError(`${result.failed} action(s) en échec`);
-          toast.error(`${result.failed} action(s) non synchronisée(s)`);
+        if (result.failed > 0 || result.remaining > 0) {
+          const message =
+            result.remaining > 0
+              ? `${result.remaining} action(s) en attente ou en échec`
+              : `${result.failed} action(s) en échec`;
+          setLastSyncError(message);
+          toast.error(message);
         }
       } catch {
         if (cancelled) return;
@@ -58,6 +64,37 @@ export function useOfflineSync() {
         setLastSyncError("Serveur Raspberry Pi inaccessible");
       } finally {
         if (!cancelled) setSyncing(false);
+      }
+    };
+
+    const probeServer = async () => {
+      if (cancelled) return;
+      if (!hasHydrated || !setupComplete || !serverHost.trim()) {
+        setOnline(false);
+        setSyncing(false);
+        return;
+      }
+      if (!navigator.onLine) {
+        setOnline(false);
+        setSyncing(false);
+        return;
+      }
+      if (useOfflineStore.getState().isSyncing) {
+        return;
+      }
+
+      try {
+        await checkServerHealth(1200);
+        if (cancelled) return;
+        const wasOnline = useOfflineStore.getState().isOnline;
+        setOnline(true);
+        if (!wasOnline) {
+          void syncAgainstServer();
+        }
+      } catch {
+        if (cancelled) return;
+        setOnline(false);
+        setSyncing(false);
       }
     };
 
@@ -73,11 +110,15 @@ export function useOfflineSync() {
     window.addEventListener("offline", handleOffline);
 
     void syncAgainstServer();
+    const interval = window.setInterval(() => {
+      void probeServer();
+    }, 3000);
 
     return () => {
       cancelled = true;
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.clearInterval(interval);
     };
   }, [hasHydrated, qc, serverHost, setLastSyncError, setOnline, setPendingCount, setSyncing, setupComplete]);
 }
