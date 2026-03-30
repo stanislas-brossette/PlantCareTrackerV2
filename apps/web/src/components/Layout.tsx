@@ -79,51 +79,53 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-slate-950 flex flex-col">
-      <header
-        className="bg-[#065f55] text-white px-4 pb-3 flex items-center justify-between shadow-md"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
-      >
-        <Link to="/" className="flex min-w-0 items-center gap-2 rounded-2xl transition-opacity hover:opacity-90 active:opacity-75">
-          <img
-            src="/icons/logo-mark.png"
-            alt="PlantCareTrackerV2"
-            className="h-9 w-9 flex-shrink-0 rounded-xl object-cover ring-1 ring-white/20"
-          />
-          <div className="min-w-0">
-            <div className="font-bold text-lg">PlantCareTrackerV2</div>
-            <div className="text-xs text-emerald-100/85 truncate">{gardenName ?? "Mode local"}</div>
-          </div>
-        </Link>
-        <div className="flex items-center gap-2 text-xs">
-          <div className={`flex items-center gap-1 rounded-full px-2 py-1 ${isOnline ? "bg-emerald-400/95 text-[#06342f]" : "bg-amber-400/95 text-[#4a2d00]"}`}>
-            {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-            <span>{isOnline ? "En ligne" : "Hors ligne"}</span>
-          </div>
-          {isSyncing && (
-            <div className="flex items-center gap-1 rounded-full bg-amber-300/95 px-2 py-1 text-[#053c35]">
-              <RefreshCw className="w-3 h-3 animate-spin" />
-              <span>Sync</span>
+      <div className="sticky top-0 z-40">
+        <header
+          className="bg-[#065f55] text-white px-4 pb-3 flex items-center justify-between shadow-md"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
+        >
+          <Link to="/" className="flex min-w-0 items-center gap-2 rounded-2xl transition-opacity hover:opacity-90 active:opacity-75">
+            <img
+              src="/icons/logo-mark.png"
+              alt="PlantCareTrackerV2"
+              className="h-9 w-9 flex-shrink-0 rounded-xl object-cover ring-1 ring-white/20"
+            />
+            <div className="min-w-0">
+              <div className="font-bold text-lg">PlantCareTrackerV2</div>
+              <div className="text-xs text-emerald-100/85 truncate">{gardenName ?? "Mode local"}</div>
             </div>
-          )}
-          {pendingCount > 0 && (
-            <div className="rounded-full bg-yellow-400 px-2 py-1 text-black">{pendingCount} attente</div>
-          )}
-          {lastSyncError && (
-            <div title={lastSyncError} className="rounded-full bg-red-500/90 px-2 py-1">
-              <AlertTriangle className="w-3 h-3" />
+          </Link>
+          <div className="flex items-center gap-2 text-xs">
+            <div className={`flex items-center gap-1 rounded-full px-2 py-1 ${isOnline ? "bg-emerald-400/95 text-[#06342f]" : "bg-amber-400/95 text-[#4a2d00]"}`}>
+              {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              <span>{isOnline ? "En ligne" : "Hors ligne"}</span>
             </div>
-          )}
-        </div>
-      </header>
+            {isSyncing && (
+              <div className="flex items-center gap-1 rounded-full bg-amber-300/95 px-2 py-1 text-[#053c35]">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Sync</span>
+              </div>
+            )}
+            {pendingCount > 0 && (
+              <div className="rounded-full bg-yellow-400 px-2 py-1 text-black">{pendingCount} attente</div>
+            )}
+            {lastSyncError && (
+              <div title={lastSyncError} className="rounded-full bg-red-500/90 px-2 py-1">
+                <AlertTriangle className="w-3 h-3" />
+              </div>
+            )}
+          </div>
+        </header>
 
-      <div className="relative h-1 overflow-hidden bg-[#05433b]/20 dark:bg-black/20">
-        <div
-          className={`absolute inset-y-0 left-0 rounded-r-full bg-gradient-to-r from-amber-300 via-lime-200 to-emerald-300 dark:from-amber-300 dark:via-lime-300 dark:to-emerald-300 ${isSyncing ? "sync-bar-active" : ""}`}
-          style={{
-            width: isSyncing ? "34%" : "0%",
-            opacity: isSyncing ? 1 : 0,
-          }}
-        />
+        <div className="relative h-1 overflow-hidden bg-[#05433b]/20 dark:bg-black/20">
+          <div
+            className={`absolute inset-y-0 left-0 rounded-r-full bg-gradient-to-r from-amber-300 via-lime-200 to-emerald-300 dark:from-amber-300 dark:via-lime-300 dark:to-emerald-300 ${isSyncing ? "sync-bar-active" : ""}`}
+            style={{
+              width: isSyncing ? "34%" : "0%",
+              opacity: isSyncing ? 1 : 0,
+            }}
+          />
+        </div>
       </div>
 
       <main

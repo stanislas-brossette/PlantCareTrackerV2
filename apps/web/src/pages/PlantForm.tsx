@@ -201,13 +201,23 @@ export default function PlantForm() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
-          <ArrowLeft className="w-5 h-5" />
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <h1 className="truncate font-bold text-lg text-gray-900 dark:text-white">
+            {isEdit ? "Modifier la plante" : "Nouvelle plante"}
+          </h1>
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={saving}
+          className="flex flex-shrink-0 items-center justify-center gap-2 rounded-full bg-[#0b6b5d] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-[#053c35]/10 hover:bg-[#09584d] disabled:opacity-50"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Enregistrer
         </button>
-        <h1 className="font-bold text-lg text-gray-900 dark:text-white">
-          {isEdit ? "Modifier la plante" : "Nouvelle plante"}
-        </h1>
       </div>
 
       <div
@@ -335,15 +345,6 @@ export default function PlantForm() {
           />
         </div>
       </div>
-
-      <button
-        onClick={handleSubmit}
-        disabled={saving}
-        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0b6b5d] py-3 text-base font-medium text-white hover:bg-[#09584d] disabled:opacity-50"
-      >
-        {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-        {isEdit ? "Enregistrer les modifications" : "Ajouter la plante"}
-      </button>
 
       {showIdentifyModal && photoFile && isOnline && (
         <IdentifyModal

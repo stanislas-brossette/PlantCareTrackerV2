@@ -73,7 +73,7 @@ function isDraftMode(props: Props): props is DraftPlantProps {
 
 export default function IdentifyModal(props: Props) {
   const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState<"name" | "details" | "planning" | null>(null);
+  const [applying, setApplying] = useState<"name" | "details" | "planning" | "all" | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +141,51 @@ export default function IdentifyModal(props: Props) {
     }
   };
 
+  const applyEverything = async () => {
+    if (!result) return;
+    setApplying("all");
+    setError(null);
+
+    try {
+      if (isDraftMode(props)) {
+        if (result.nom_commun) {
+          props.onApplyName?.(result.nom_commun);
+        }
+
+        const notes = buildNotes(result);
+        if (notes) {
+          props.onApplyDetails?.(notes);
+        }
+
+        props.onApplyPlanning?.({
+          wateringFreqByMonth: result.arrosage_freq_par_mois ?? null,
+          fertilizingFreqByMonth: result.fertilisation_freq_par_mois ?? null,
+          wateringFreqDays: averageNonZero(result.arrosage_freq_par_mois),
+          fertilizingFreqDays: averageNonZero(result.fertilisation_freq_par_mois),
+        });
+
+        props.onApplied?.();
+        props.onClose();
+      } else {
+        await api.patch(`/identify/${props.plantId}`, {
+          identification: result,
+          apply: {
+            name: true,
+            details: true,
+            planning: true,
+          },
+        });
+        props.onApplied?.();
+        props.onClose();
+      }
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(message || "Erreur lors de l'application");
+    } finally {
+      setApplying(null);
+    }
+  };
+
   const rows: [string, keyof IdentificationResult][] = [
     ["Nom commun", "nom_commun"],
     ["Nom latin", "nom_latin"],
@@ -157,8 +202,14 @@ export default function IdentifyModal(props: Props) {
   const monthLabels = ["J","F","M","A","M","J","J","A","S","O","N","D"];
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top, 0px) + 1rem)",
+        paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+      }}
+    >
+      <div className="flex max-h-[86vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl dark:bg-gray-800">
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-500" />
@@ -264,47 +315,56 @@ export default function IdentifyModal(props: Props) {
         </div>
 
         {result && (
-          <div className="p-4 border-t border-gray-100 dark:border-gray-700 space-y-2">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
+            <div className="rounded-2xl bg-emerald-50/80 p-3 dark:bg-emerald-950/30">
+              <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                Comment veux-tu utiliser la suggestion ?
+              </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Tu peux tout appliquer d’un coup, ou ne garder qu’une seule partie.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                void applyEverything();
+              }}
+              disabled={applying !== null}
+              className="flex w-full items-center justify-center rounded-2xl bg-[#0b6b5d] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#09584d] disabled:opacity-50"
+            >
+              {applying === "all" ? "Application..." : "Tout appliquer"}
+            </button>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
                 onClick={() => applySection("name")}
                 disabled={!result.nom_commun || applying !== null}
-                className="py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                className="rounded-2xl border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
               >
-                {applying === "name" ? "Application..." : "Appliquer le nom"}
+                {applying === "name" ? "Application..." : "Nom seulement"}
               </button>
               <button
                 onClick={() => applySection("details")}
                 disabled={applying !== null}
-                className="py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+                className="rounded-2xl border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
               >
-                {applying === "details" ? "Application..." : "Appliquer les détails"}
+                {applying === "details" ? "Application..." : "Détails seulement"}
               </button>
               <button
                 onClick={() => applySection("planning")}
                 disabled={applying !== null}
-                className="py-2.5 bg-[#0b6b5d] text-white rounded-xl text-sm font-medium hover:bg-[#09584d] disabled:opacity-50"
+                className="rounded-2xl border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
               >
-                {applying === "planning" ? "Application..." : "Appliquer les plannings"}
+                {applying === "planning" ? "Application..." : "Planning seulement"}
               </button>
             </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(JSON.stringify(result, null, 2));
-                }}
-                className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50"
-              >
-                Copier
-              </button>
-              <button
-                onClick={props.onClose}
-                className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-              >
-                Fermer
-              </button>
-            </div>
+            <button
+              onClick={props.onClose}
+              className="w-full rounded-2xl px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+            >
+              Fermer
+            </button>
           </div>
         )}
       </div>
