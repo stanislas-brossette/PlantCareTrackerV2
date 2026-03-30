@@ -23,6 +23,22 @@ function mergeWithLocalPlants(remotePlants: LocalPlant[] | undefined, localPlant
   });
 }
 
+async function persistPlantUpdate(qc: ReturnType<typeof useQueryClient>, plant: LocalPlant) {
+  await db.plants.put(plant);
+  qc.setQueryData(["plant", plant.id], plant);
+  qc.setQueryData<LocalPlant[] | undefined>(["plants"], (current) => {
+    if (!current) return current;
+    const exists = current.some((currentPlant) => currentPlant.id === plant.id);
+    if (!exists) {
+      return [...current, plant];
+    }
+
+    return current.map((currentPlant) =>
+      currentPlant.id === plant.id ? { ...currentPlant, ...plant } : currentPlant,
+    );
+  });
+}
+
 export function usePlants() {
   const isOnline = useOfflineStore((s) => s.isOnline);
   const qc = useQueryClient();
@@ -80,15 +96,16 @@ export function usePlants() {
       }
       const res = await api.post<Plant>("/plants", body);
       const createdPlant = res.data as LocalPlant;
-      await db.plants.put(createdPlant);
+      await persistPlantUpdate(qc, createdPlant);
       return createdPlant;
     },
     onSuccess: (createdPlant) => {
-      qc.setQueryData<LocalPlant[] | undefined>(["plants"], (current) => {
-        if (!current) return current;
-        const withoutExisting = current.filter((plant) => plant.id !== createdPlant.id);
-        return [...withoutExisting, createdPlant];
-      });
+      qc.setQueryData<LocalPlant[] | undefined>(["plants"], (current) =>
+        current
+          ? [...current.filter((plant) => plant.id !== createdPlant.id), createdPlant]
+          : current,
+      );
+      qc.setQueryData(["plant", createdPlant.id], createdPlant);
       qc.invalidateQueries({ queryKey: ["plants"] });
     },
   });
@@ -101,9 +118,17 @@ export function usePlants() {
         return;
       }
       const res = await api.patch<Plant>(`/plants/${id}`, body);
-      return res.data;
+      const updatedPlant = res.data as LocalPlant;
+      await persistPlantUpdate(qc, updatedPlant);
+      return updatedPlant;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["plants"] }),
+    onSuccess: (updatedPlant, variables) => {
+      if (updatedPlant) {
+        qc.setQueryData(["plant", variables.id], updatedPlant);
+      }
+      qc.invalidateQueries({ queryKey: ["plants"] });
+      qc.invalidateQueries({ queryKey: ["plant", variables.id] });
+    },
   });
 
   const deletePlant = useMutation({

@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { usePlant, usePlants } from "../hooks/usePlants";
 import { useCareEvents, useRecordCare, useUndoCare } from "../hooks/useCare";
 import IdentifyModal from "../components/IdentifyModal";
+import MonthlyFreqOverview from "../components/MonthlyFreqOverview";
 import { triggerLightHaptic } from "../lib/haptics";
 import { resolveAssetUrl } from "../lib/serverConfig";
 import { useOfflineStore } from "../stores/offline";
@@ -41,7 +42,7 @@ function ScheduleRow({
   const nextDate = lastDate && freq ? addDays(new Date(lastDate), freq) : null;
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm dark:bg-gray-800">
+    <div className="flex items-center gap-3 rounded-2xl bg-emerald-50/70 p-3 dark:bg-gray-900/70">
       <div className="text-2xl">{emoji}</div>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-gray-900 dark:text-white">{label}</div>
@@ -54,14 +55,61 @@ function ScheduleRow({
       </div>
       <button
         onClick={onRecord}
-        className={`rounded-xl px-4 py-2 text-sm font-medium ${needs ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`}
+        className={`rounded-xl px-4 py-2 text-sm font-medium ${needs ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300" : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300"}`}
       >
         {emoji}
       </button>
-      <button onClick={onUndo} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
+      <button onClick={onUndo} className="rounded-xl p-2 text-gray-400 hover:bg-white/80 dark:hover:bg-gray-800">
         <Undo2 className="w-4 h-4" />
       </button>
     </div>
+  );
+}
+
+function CareSection({
+  emoji,
+  label,
+  freq,
+  lastDate,
+  needs,
+  onRecord,
+  onUndo,
+  values,
+  fallbackDays,
+}: {
+  emoji: string;
+  label: string;
+  freq: number | null | undefined;
+  lastDate: string | null | undefined;
+  needs: boolean | null | undefined;
+  onRecord: () => void;
+  onUndo: () => void;
+  values: number[] | null | undefined;
+  fallbackDays: number | null | undefined;
+}) {
+  const planningLabel = label === "Arrosage" ? "Planning d'arrosage" : "Planning de fertilisation";
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
+      <ScheduleRow
+        emoji={emoji}
+        label={label}
+        freq={freq}
+        lastDate={lastDate}
+        needs={needs}
+        onRecord={onRecord}
+        onUndo={onUndo}
+      />
+      <div className="mt-4">
+        <MonthlyFreqOverview
+          label={planningLabel}
+          emoji={emoji}
+          values={values}
+          fallbackDays={fallbackDays}
+          embedded
+        />
+      </div>
+    </section>
   );
 }
 
@@ -342,24 +390,30 @@ export default function PlantDetail() {
         </div>
       )}
 
-      <ScheduleRow
-        emoji="💧"
-        label="Arrosage"
-        freq={plant.currentWateringFreq}
-        lastDate={plant.lastWatered}
-        needs={plant.needsWatering}
-        onRecord={() => handleCare("WATERING")}
-        onUndo={() => handleUndo("WATERING")}
-      />
-      <ScheduleRow
-        emoji="🌿"
-        label="Fertilisation"
-        freq={plant.currentFertilizingFreq}
-        lastDate={plant.lastFertilized}
-        needs={plant.needsFertilizing}
-        onRecord={() => handleCare("FERTILIZING")}
-        onUndo={() => handleUndo("FERTILIZING")}
-      />
+      <div className="grid gap-4">
+        <CareSection
+          emoji="💧"
+          label="Arrosage"
+          freq={plant.currentWateringFreq}
+          lastDate={plant.lastWatered}
+          needs={plant.needsWatering}
+          onRecord={() => handleCare("WATERING")}
+          onUndo={() => handleUndo("WATERING")}
+          values={plant.wateringFreqByMonth}
+          fallbackDays={plant.wateringFreqDays}
+        />
+        <CareSection
+          emoji="🌿"
+          label="Fertilisation"
+          freq={plant.currentFertilizingFreq}
+          lastDate={plant.lastFertilized}
+          needs={plant.needsFertilizing}
+          onRecord={() => handleCare("FERTILIZING")}
+          onUndo={() => handleUndo("FERTILIZING")}
+          values={plant.fertilizingFreqByMonth}
+          fallbackDays={plant.fertilizingFreqDays}
+        />
+      </div>
 
       <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
         <h2 className="font-semibold text-gray-900 dark:text-white mb-3">Historique</h2>

@@ -9,6 +9,7 @@ import { usePlant, usePlants } from "../hooks/usePlants";
 import { useCreateLocation, useLocations } from "../hooks/useGarden";
 import { db, queueAction } from "../lib/db";
 import { uploadPhotoDataUrl as uploadPhotoAsset } from "../lib/photos";
+import { resolveAssetUrl } from "../lib/serverConfig";
 import { useOfflineStore } from "../stores/offline";
 
 function resizeImage(file: File, maxSize = 800): Promise<Blob> {
@@ -43,6 +44,11 @@ async function dataUrlToFile(dataUrl: string, filename: string) {
   const response = await fetch(dataUrl);
   const blob = await response.blob();
   return new File([blob], filename, { type: blob.type || "image/jpeg" });
+}
+
+function resolvePreviewSource(source: string | null | undefined) {
+  if (!source) return null;
+  return resolveAssetUrl(source) ?? source;
 }
 
 export default function PlantForm() {
@@ -82,7 +88,7 @@ export default function PlantForm() {
       setWaterByMonth(existing.wateringFreqByMonth ?? null);
       setFertByMonth(existing.fertilizingFreqByMonth ?? null);
       setLocationId(existing.locationId ?? "");
-      setPhotoPreview(existing.cachedPhotoUrl ?? existing.photoUrl ?? null);
+      setPhotoPreview(resolvePreviewSource(existing.cachedPhotoUrl) ?? resolvePreviewSource(existing.photoUrl));
     }
   }, [existing, isEdit]);
 
@@ -183,6 +189,10 @@ export default function PlantForm() {
             },
           });
         }
+      } else if (photoPreview?.startsWith("data:")) {
+        // Keep the locally cached preview after a metadata-only save so Android can
+        // reopen the form without depending on a fresh remote image request.
+        await db.plants.update(plantId, { cachedPhotoUrl: photoPreview });
       }
 
       toast.success(isEdit ? "Plante mise à jour" : "Plante ajoutée");
@@ -224,7 +234,19 @@ export default function PlantForm() {
         className="relative flex h-48 w-full items-center justify-center overflow-hidden rounded-2xl bg-emerald-50 dark:bg-emerald-950/40"
       >
         {photoPreview ? (
-          <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+          <img
+            src={photoPreview}
+            alt=""
+            className="w-full h-full object-cover"
+            onError={() => {
+              const fallback = resolvePreviewSource(existing?.photoUrl);
+              if (fallback && fallback !== photoPreview) {
+                setPhotoPreview(fallback);
+                return;
+              }
+              setPhotoPreview(null);
+            }}
+          />
         ) : (
           <div className="text-center text-[#0b6b5d] dark:text-amber-200">
             <Camera className="w-10 h-10 mx-auto mb-2" />

@@ -15,8 +15,9 @@ import { ensureMvpContext } from "./utils/mvp.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
-const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads"));
-const WEB_DIST = path.resolve(process.cwd(), "../../apps/web/dist");
+const API_ROOT = path.resolve(__dirname, "..");
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(API_ROOT, "uploads"));
+const WEB_DIST = path.resolve(API_ROOT, "../web/dist");
 
 async function build() {
   const fastify = Fastify({
@@ -54,7 +55,7 @@ async function build() {
       if (req.url.startsWith("/api/")) {
         return reply.status(404).send({ error: "Not found" });
       }
-      reply.sendFile("index.html", WEB_DIST);
+      reply.type("text/html; charset=utf-8").send(fs.createReadStream(path.join(WEB_DIST, "index.html")));
     });
   } else {
     fastify.log.info("Frontend dist not found — running in API-only mode (use Vite dev server)");

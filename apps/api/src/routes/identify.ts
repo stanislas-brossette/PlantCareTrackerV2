@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import fs from "fs/promises";
 import path from "path";
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, "../../uploads"));
 
 interface IdentificationResult {
   nom_commun?: string;

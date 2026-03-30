@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles, X, Loader2 } from "lucide-react";
 import api from "../lib/api";
+import { db } from "../lib/db";
+import type { LocalPlant } from "@plantcare/shared";
 
 export interface IdentificationResult {
   nom_commun?: string;
@@ -71,11 +74,78 @@ function isDraftMode(props: Props): props is DraftPlantProps {
   return "imageFile" in props;
 }
 
+function buildPlantPatch(
+  result: IdentificationResult,
+  apply: { name?: boolean; details?: boolean; planning?: boolean },
+) {
+  const patch: Partial<LocalPlant> = {};
+
+  if (apply.name && result.nom_commun) {
+    patch.name = result.nom_commun;
+  }
+
+  if (apply.details) {
+    const notes = buildNotes(result);
+    if (notes) {
+      patch.notes = notes;
+    }
+  }
+
+  if (apply.planning) {
+    const wateringFreqByMonth = result.arrosage_freq_par_mois ?? null;
+    const fertilizingFreqByMonth = result.fertilisation_freq_par_mois ?? null;
+    const wateringFreqDays = averageNonZero(result.arrosage_freq_par_mois);
+    const fertilizingFreqDays = averageNonZero(result.fertilisation_freq_par_mois);
+
+    patch.wateringFreqByMonth = wateringFreqByMonth;
+    patch.fertilizingFreqByMonth = fertilizingFreqByMonth;
+    patch.wateringFreqDays = wateringFreqDays;
+    patch.fertilizingFreqDays = fertilizingFreqDays;
+    patch.currentWateringFreq = wateringFreqByMonth
+      ? wateringFreqByMonth[new Date().getMonth()] ?? wateringFreqDays
+      : wateringFreqDays;
+    patch.currentFertilizingFreq = fertilizingFreqByMonth
+      ? fertilizingFreqByMonth[new Date().getMonth()] ?? fertilizingFreqDays
+      : fertilizingFreqDays;
+  }
+
+  return patch;
+}
+
 export default function IdentifyModal(props: Props) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState<"name" | "details" | "planning" | "all" | null>(null);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const syncUpdatedPlantLocally = async (
+    plantId: string,
+    apply: { name?: boolean; details?: boolean; planning?: boolean },
+    identification: IdentificationResult,
+  ) => {
+    const patch = buildPlantPatch(identification, apply);
+    const queryPlant = queryClient.getQueryData<LocalPlant>(["plant", plantId]);
+    const dbPlant = await db.plants.get(plantId);
+    const sourcePlant = dbPlant ?? queryPlant;
+
+    if (sourcePlant) {
+      const updatedPlant: LocalPlant = {
+        ...sourcePlant,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await db.plants.put(updatedPlant);
+      queryClient.setQueryData(["plant", plantId], updatedPlant);
+      queryClient.setQueryData<LocalPlant[] | undefined>(["plants"], (current) =>
+        current?.map((plant) => (plant.id === plantId ? { ...plant, ...patch, updatedAt: updatedPlant.updatedAt } : plant)),
+      );
+    }
+
+    void queryClient.invalidateQueries({ queryKey: ["plant", plantId] });
+    void queryClient.invalidateQueries({ queryKey: ["plants"] });
+  };
 
   const identify = async () => {
     setLoading(true);
@@ -131,6 +201,15 @@ export default function IdentifyModal(props: Props) {
             planning: section === "planning",
           },
         });
+        await syncUpdatedPlantLocally(
+          props.plantId,
+          {
+            name: section === "name",
+            details: section === "details",
+            planning: section === "planning",
+          },
+          result,
+        );
         props.onApplied?.();
       }
     } catch (err: unknown) {
@@ -175,6 +254,15 @@ export default function IdentifyModal(props: Props) {
             planning: true,
           },
         });
+        await syncUpdatedPlantLocally(
+          props.plantId,
+          {
+            name: true,
+            details: true,
+            planning: true,
+          },
+          result,
+        );
         props.onApplied?.();
         props.onClose();
       }

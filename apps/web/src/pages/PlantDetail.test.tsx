@@ -49,8 +49,8 @@ const plant: LocalPlant = {
   location: { id: "loc-1", name: "Salon", gardenId: "garden-1" },
   wateringFreqDays: 7,
   fertilizingFreqDays: 30,
-  wateringFreqByMonth: null,
-  fertilizingFreqByMonth: null,
+  wateringFreqByMonth: [10, 10, 9, 8, 7, 6, 6, 6, 7, 8, 9, 10],
+  fertilizingFreqByMonth: [0, 0, 30, 21, 21, 14, 14, 14, 21, 30, 0, 0],
   lastWatered: null,
   lastFertilized: null,
   needsWatering: false,
@@ -113,5 +113,14 @@ describe("PlantDetail", () => {
     renderWithProviders(<PlantDetail />, [{ pathname: "/plants/plant-1", state: { direction: "next" } } as never]);
 
     expect(screen.getByText("Monstera")).toBeInTheDocument();
+  });
+
+  it("shows watering and fertilizing histograms", () => {
+    renderWithProviders(<PlantDetail />);
+
+    expect(screen.getByText(/Planning d'arrosage/i)).toBeInTheDocument();
+    expect(screen.getByText(/Planning de fertilisation/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Jan").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Dec").length).toBeGreaterThan(0);
   });
 });

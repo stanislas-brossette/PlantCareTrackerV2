@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import { v4 as uuid } from "uuid";
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), "uploads");
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, "../../uploads"));
 const MAX_SIZE = 800;
 
 export async function ensureUploadDir() {

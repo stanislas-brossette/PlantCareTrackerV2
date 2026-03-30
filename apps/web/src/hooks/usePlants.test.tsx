@@ -21,6 +21,7 @@ vi.mock("../lib/db", () => ({
     plants: {
       delete: vi.fn(),
       put: vi.fn(),
+      update: vi.fn(),
       toArray: vi.fn().mockResolvedValue([]),
     },
   },
@@ -157,5 +158,27 @@ describe("usePlants", () => {
 
     expect(api.post).toHaveBeenCalledWith("/plants", { name: "Monstera" });
     expect(db.plants.put).toHaveBeenCalledWith(activePlant);
+  });
+
+  it("stores an updated online plant locally right away", async () => {
+    const updatedPlant = {
+      ...activePlant,
+      name: "Monstera Deliciosa",
+      notes: "Exposee plein salon",
+    };
+
+    vi.mocked(api.get)
+      .mockResolvedValueOnce({ data: [activePlant] })
+      .mockResolvedValueOnce({ data: [] });
+    vi.mocked(api.patch).mockResolvedValue({ data: updatedPlant });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePlants(), { wrapper });
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    await result.current.updatePlant.mutateAsync({ id: activePlant.id, name: updatedPlant.name });
+
+    expect(api.patch).toHaveBeenCalledWith(`/plants/${activePlant.id}`, { name: updatedPlant.name });
+    expect(db.plants.put).toHaveBeenCalledWith(updatedPlant);
   });
 });
