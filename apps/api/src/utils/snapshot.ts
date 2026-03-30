@@ -13,8 +13,15 @@ function computePlantStatus(
   lastFertilized: Date | null,
 ) {
   const now = new Date();
+  const startOfDay = (date: Date) => {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
   const daysSince = (date: Date | null) =>
-    date ? (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24) : Infinity;
+    date
+      ? (startOfDay(now).getTime() - startOfDay(date).getTime()) / (1000 * 60 * 60 * 24)
+      : Infinity;
 
   const waterFreq = getEffectiveFreq(plant.wateringFreqByMonth, plant.wateringFreqDays, now);
   const fertFreq = getEffectiveFreq(plant.fertilizingFreqByMonth, plant.fertilizingFreqDays, now);

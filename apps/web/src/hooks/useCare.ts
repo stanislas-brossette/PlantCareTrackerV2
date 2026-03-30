@@ -7,7 +7,18 @@ import type { CareEvent, CareType } from "@plantcare/shared";
 
 function daysSince(date: string | null) {
   if (!date) return Infinity;
-  return (Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24);
+  const now = new Date();
+  const target = new Date(date);
+  const startOfDay = (value: Date) => {
+    const normalized = new Date(value);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
+
+  return (
+    (startOfDay(now).getTime() - startOfDay(target).getTime()) /
+    (1000 * 60 * 60 * 24)
+  );
 }
 
 export function useCareEvents(plantId: string | undefined) {

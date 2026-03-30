@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
 import { Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
-import { addDays, format, formatDistanceToNow } from "date-fns";
+import { addDays, differenceInCalendarDays, format } from "date-fns";
 import { fr } from "date-fns/locale";
 import toast from "react-hot-toast";
 import { usePlant, usePlants } from "../hooks/usePlants";
@@ -22,6 +22,20 @@ const CARE_LABELS: Record<CareType, { label: string; icon: string }> = {
   OTHER: { label: "Autre", icon: "📝" },
 };
 
+function startOfDay(date: Date) {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+}
+
+function formatDaysAgo(date: string | null | undefined) {
+  if (!date) return "Jamais";
+
+  const daysAgo = differenceInCalendarDays(new Date(), new Date(date));
+  if (daysAgo <= 0) return "Aujourd'hui";
+  return `Il y a ${daysAgo} jour${daysAgo > 1 ? "s" : ""}`;
+}
+
 function ScheduleRow({
   emoji,
   label,
@@ -39,7 +53,7 @@ function ScheduleRow({
   onRecord: () => void;
   onUndo: () => void;
 }) {
-  const nextDate = lastDate && freq ? addDays(new Date(lastDate), freq) : null;
+  const nextDate = lastDate && freq ? addDays(startOfDay(new Date(lastDate)), freq) : null;
 
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-emerald-50/70 p-3 dark:bg-gray-900/70">
@@ -47,9 +61,7 @@ function ScheduleRow({
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium text-gray-900 dark:text-white">{label}</div>
         <div className="text-xs text-gray-500">
-          {lastDate
-            ? `Dernier : ${formatDistanceToNow(new Date(lastDate), { addSuffix: true, locale: fr })}`
-            : "Jamais"}
+          {`Dernier : ${formatDaysAgo(lastDate)}`}
           {nextDate && <span className="ml-1">· Prochain : {format(nextDate, "d MMM", { locale: fr })}</span>}
         </div>
       </div>
