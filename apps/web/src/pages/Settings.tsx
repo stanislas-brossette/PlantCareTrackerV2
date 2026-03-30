@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { Loader2, MapPin, Moon, RefreshCw, Server, Sun, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../lib/api";
-import { clearPendingActions } from "../lib/db";
+import { clearPendingActions, getPendingActions } from "../lib/db";
 import { runFullResync } from "../lib/sync";
 import { useCreateLocation, useDeleteLocation, useLocations } from "../hooks/useGarden";
 import { useAppStore } from "../stores/app";
@@ -14,6 +15,7 @@ export default function Settings() {
   const deleteLocation = useDeleteLocation();
   const { serverHost, serverPort, protocol, setServerConfig, lastSuccessfulSyncAt } = useAppStore();
   const { pendingCount, setOnline, setLastSyncError } = useOfflineStore();
+  const pendingActions = useLiveQuery(() => getPendingActions(), []) ?? [];
 
   const [host, setHost] = useState(serverHost);
   const [port, setPort] = useState(serverPort);
@@ -163,6 +165,29 @@ export default function Settings() {
           Dernière sync : {lastSuccessfulSyncAt ? new Date(lastSuccessfulSyncAt).toLocaleString("fr-FR") : "jamais"}
         </div>
         <div className="text-xs text-gray-500">Actions en attente : {pendingCount}</div>
+        {pendingActions.length > 0 ? (
+          <div className="rounded-xl border border-yellow-200 bg-yellow-50/80 p-3 text-xs text-yellow-900 dark:border-yellow-900/50 dark:bg-yellow-950/20 dark:text-yellow-100">
+            <div className="mb-2 font-semibold">Détail des actions en attente</div>
+            <div className="space-y-2">
+              {pendingActions.map((action) => (
+                <div
+                  key={action.id}
+                  className="rounded-lg bg-white/70 px-2 py-2 dark:bg-slate-900/40"
+                >
+                  <div className="font-medium">{action.action.kind}</div>
+                  <div className="text-[11px] opacity-80">
+                    {new Date(action.createdAt).toLocaleString("fr-FR")}
+                  </div>
+                  {action.lastError ? (
+                    <div className="mt-1 text-[11px] text-red-700 dark:text-red-300">
+                      {action.lastError}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {pendingCount > 0 && (
           <button
             onClick={() => {

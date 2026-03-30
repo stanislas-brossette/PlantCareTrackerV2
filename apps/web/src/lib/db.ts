@@ -106,6 +106,10 @@ export async function clearPendingActions() {
   await db.pendingActions.clear();
 }
 
+export async function getPendingActions() {
+  return db.pendingActions.orderBy("createdAt").toArray();
+}
+
 export async function getLocalSnapshotInfo() {
   const [plantCount, locationCount, careEventCount, firstPlant] = await Promise.all([
     db.plants.count(),
