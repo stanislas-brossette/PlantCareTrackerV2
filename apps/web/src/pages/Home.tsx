@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Archive, MapPin } from "lucide-react";
+import { Plus, Search, Archive, MapPin, Settings } from "lucide-react";
 import { usePlants } from "../hooks/usePlants";
 import { useRecordCare } from "../hooks/useCare";
 import PlantCard from "../components/PlantCard";
@@ -16,6 +16,7 @@ export default function Home() {
 
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const activeCount = plants.filter((p) => !p.archived).length;
   const archivedCount = plants.filter((p) => p.archived).length;
@@ -81,67 +82,76 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
-            Maison
-          </p>
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {showArchived ? "Plantes archivées" : gardenName ?? "Mes plantes"}
-          </h1>
-        </div>
-        <Link
-          to="/plants/new"
-          className="bg-[#0b6b5d] text-white p-2.5 rounded-xl hover:bg-[#09584d] transition-colors flex-shrink-0 shadow-sm shadow-[#053c35]/10"
-          aria-label="Ajouter une plante"
-        >
-          <Plus className="w-5 h-5" />
-        </Link>
-      </div>
+    <div className="space-y-4 pb-24">
+      <section className="rounded-[1.6rem] border border-emerald-100/80 bg-white/85 p-3 shadow-sm shadow-[#053c35]/5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/75">
+        <div className="flex items-center gap-2">
+          <div className="inline-flex min-w-0 flex-1 rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/70">
+            <button
+              onClick={() => setShowArchived(false)}
+              className={`flex-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                !showArchived
+                  ? "bg-[#0b6b5d] text-white shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              }`}
+            >
+              Actives ({activeCount})
+            </button>
+            <button
+              onClick={() => setShowArchived(true)}
+              className={`flex-1 px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
+                showArchived
+                  ? "bg-[#0b6b5d] text-white shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              Archivées ({archivedCount})
+            </button>
+          </div>
 
-      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-        <span>{activeCount} active{activeCount > 1 ? "s" : ""}</span>
-        <span className="text-gray-300 dark:text-gray-600">•</span>
-        <span>{archivedCount} archivée{archivedCount > 1 ? "s" : ""}</span>
-      </div>
-
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
-          <input
-            type="search"
-            placeholder="Rechercher une plante..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-9 rounded-full border border-gray-200 bg-transparent pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 dark:border-gray-700 dark:text-gray-200 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#0b6b5d]/30 focus:border-[#0b6b5d]/40"
-          />
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSearch((value) => {
+                  if (value) {
+                    setSearch("");
+                  }
+                  return !value;
+                });
+              }}
+              className={`rounded-xl p-2.5 transition-colors ${
+                showSearch || search
+                  ? "bg-emerald-100 text-[#0b6b5d] dark:bg-emerald-950/40 dark:text-emerald-200"
+                  : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"
+              }`}
+              aria-label="Afficher la recherche"
+            >
+              <Search className="h-4.5 w-4.5" />
+            </button>
+            <Link
+              to="/settings"
+              className="rounded-xl bg-slate-100 p-2.5 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+              aria-label="Ouvrir les réglages"
+            >
+              <Settings className="h-4.5 w-4.5" />
+            </Link>
+          </div>
         </div>
 
-        <div className="inline-flex w-full sm:w-auto rounded-full border border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-800/50 p-1">
-          <button
-            onClick={() => setShowArchived(false)}
-            className={`flex-1 sm:flex-none px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              !showArchived
-                ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            Actives ({activeCount})
-          </button>
-          <button
-            onClick={() => setShowArchived(true)}
-            className={`flex-1 sm:flex-none px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center justify-center gap-1 ${
-              showArchived
-                ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-            }`}
-          >
-            <Archive className="w-3.5 h-3.5" />
-            Archivées ({archivedCount})
-          </button>
-        </div>
-      </div>
+        {showSearch && (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+            <input
+              type="search"
+              placeholder="Rechercher une plante..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50/80 pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-500 focus:border-[#0b6b5d]/40 focus:outline-none focus:ring-2 focus:ring-[#0b6b5d]/20"
+            />
+          </div>
+        )}
+      </section>
 
       {isLoading && (
         <div className="space-y-1.5">
@@ -158,13 +168,7 @@ export default function Home() {
             {search ? "Aucune plante trouvée" : "Aucune plante pour l'instant"}
           </p>
           {!search && (
-            <Link
-              to="/plants/new"
-              className="mt-4 inline-flex items-center gap-2 bg-[#0b6b5d] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#09584d]"
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter une plante
-            </Link>
+            <p className="mt-3 text-sm text-slate-400 dark:text-slate-500">Utilise le bouton + en bas à droite pour commencer.</p>
           )}
         </div>
       )}
@@ -204,6 +208,15 @@ export default function Home() {
           ))}
         </div>
       )}
+
+      <Link
+        to="/plants/new"
+        className="fixed bottom-5 right-4 z-20 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0b6b5d] text-white shadow-lg shadow-[#053c35]/25 transition-transform transition-colors hover:bg-[#09584d] active:scale-95"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+        aria-label="Ajouter une plante"
+      >
+        <Plus className="h-6 w-6" />
+      </Link>
     </div>
   );
 }

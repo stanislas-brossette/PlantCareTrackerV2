@@ -1,6 +1,6 @@
-import { Outlet, NavLink } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import { useRef, useState } from "react";
-import { Home, Settings, Wifi, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
+import { Wifi, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import toast from "react-hot-toast";
 import { triggerLightHaptic, triggerSuccessHaptic } from "../lib/haptics";
 import { useAppStore } from "../stores/app";
@@ -16,11 +16,6 @@ export default function Layout() {
   const isPulling = useRef(false);
   const pullThreshold = 72;
   const pullProgress = Math.min(pullDistance / pullThreshold, 1);
-
-  const navItems = [
-    { to: "/", icon: Home, label: "Plantes", end: true },
-    { to: "/settings", icon: Settings, label: "Réglages" },
-  ];
 
   const handleRefresh = async () => {
     setSyncing(true);
@@ -88,7 +83,7 @@ export default function Layout() {
         className="bg-[#065f55] text-white px-4 pb-3 flex items-center justify-between shadow-md"
         style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <Link to="/" className="flex min-w-0 items-center gap-2 rounded-2xl transition-opacity hover:opacity-90 active:opacity-75">
           <img
             src="/icons/logo-mark.png"
             alt="PlantCareTrackerV2"
@@ -98,7 +93,7 @@ export default function Layout() {
             <div className="font-bold text-lg">PlantCareTrackerV2</div>
             <div className="text-xs text-emerald-100/85 truncate">{gardenName ?? "Mode local"}</div>
           </div>
-        </div>
+        </Link>
         <div className="flex items-center gap-2 text-xs">
           <div className={`flex items-center gap-1 rounded-full px-2 py-1 ${isOnline ? "bg-emerald-400/95 text-[#06342f]" : "bg-amber-400/95 text-[#4a2d00]"}`}>
             {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
@@ -211,28 +206,6 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <nav
-        className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-around pt-2 shadow-lg"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}
-      >
-        {navItems.map(({ to, icon: Icon, label, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 px-4 py-1 rounded-lg transition-colors text-xs ${
-                isActive
-                  ? "text-[#0b6b5d] dark:text-amber-200 font-semibold"
-                  : "text-gray-500 dark:text-gray-400"
-              }`
-            }
-          >
-            <Icon className="w-5 h-5" />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
     </div>
   );
 }

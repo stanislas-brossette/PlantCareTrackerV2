@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
-import { fr } from "date-fns/locale";
+import { differenceInCalendarDays } from "date-fns";
 import type { LocalPlant } from "@plantcare/shared";
 import { resolveAssetUrl } from "../lib/serverConfig";
 
@@ -19,9 +18,13 @@ function StatusBadge({
   needs: boolean;
   onClick: (e: React.MouseEvent) => void;
 }) {
-  const label = date
-    ? formatDistanceToNow(new Date(date), { addSuffix: true, locale: fr })
-    : "Jamais";
+  const label = (() => {
+    if (!date) return "Jamais";
+
+    const daysAgo = differenceInCalendarDays(new Date(), new Date(date));
+    if (daysAgo <= 0) return "Aujourd'hui";
+    return `Il y a ${daysAgo} jour${daysAgo > 1 ? "s" : ""}`;
+  })();
 
   return (
     <button

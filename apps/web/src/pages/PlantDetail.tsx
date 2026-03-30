@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, Link } from "react-router-dom";
-import { Home, Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, Edit, Sparkles, Undo2, Loader2, MoreVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { addDays, format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import toast from "react-hot-toast";
@@ -262,10 +262,7 @@ export default function PlantDetail() {
         )}
 
         <div className="absolute top-0 left-0 right-0 flex items-center justify-between p-3" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)" }}>
-          <button onClick={() => navigate("/")} className="p-2 rounded-xl bg-black/30 text-white hover:bg-black/50">
-            <Home className="w-5 h-5" />
-          </button>
-          <h1 className="font-bold text-white text-base truncate mx-2">{plant.name}</h1>
+          <h1 className="mr-3 flex-1 truncate font-bold text-white text-base">{plant.name}</h1>
           <div className="relative">
             <button onClick={() => setShowMenu((v) => !v)} className="p-2 rounded-xl bg-black/30 text-white hover:bg-black/50">
               <MoreVertical className="w-5 h-5" />

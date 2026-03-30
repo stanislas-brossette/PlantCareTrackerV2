@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "react-hot-toast";
+import { App as CapacitorApp } from "@capacitor/app";
 
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useOfflineSync } from "./hooks/useOfflineSync";
@@ -25,6 +26,7 @@ const queryClient = new QueryClient({
 function AppRoutes() {
   const { appReady } = useAppBootstrap();
   useOfflineSync();
+  useAndroidBackToHome();
 
   if (!appReady) {
     return <RouteFallback />;
@@ -44,6 +46,38 @@ function AppRoutes() {
       </Routes>
     </Suspense>
   );
+}
+
+function useAndroidBackToHome() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    let removeListener: (() => Promise<void>) | undefined;
+
+    const setup = async () => {
+      const listener = await CapacitorApp.addListener("backButton", async () => {
+        if (location.pathname !== "/") {
+          navigate("/", { replace: false });
+          return;
+        }
+
+        try {
+          await CapacitorApp.minimizeApp();
+        } catch {
+          CapacitorApp.exitApp();
+        }
+      });
+
+      removeListener = () => listener.remove();
+    };
+
+    void setup();
+
+    return () => {
+      void removeListener?.();
+    };
+  }, [location.pathname, navigate]);
 }
 
 function RouteFallback() {
