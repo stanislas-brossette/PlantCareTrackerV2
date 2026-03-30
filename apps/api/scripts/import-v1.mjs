@@ -2,7 +2,16 @@ import fs from "fs";
 import path from "path";
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+const SYSTEM_EMAIL = "local@plantcare.mvp";
+const SYSTEM_PASSWORD = "mvp-no-login";
+const GARDEN_NAME = "Maison";
+const rawDatabaseUrl = process.env.DATABASE_URL ?? "file:./dev.db";
+const databaseUrl = rawDatabaseUrl.startsWith("file:./")
+  ? `file:${path.resolve(process.cwd(), "prisma", rawDatabaseUrl.slice("file:./".length))}`
+  : rawDatabaseUrl;
+const prisma = new PrismaClient({
+  datasourceUrl: databaseUrl,
+});
 
 function normalizeName(value) {
   return value.trim();
@@ -27,6 +36,7 @@ function averageNonZero(values) {
 }
 
 function getLastClicked(lastClicked, plantName, label) {
+  if (!lastClicked) return null;
   const raw = lastClicked[`button-${plantName}-${label}`];
   if (!raw) return null;
   const parsed = new Date(raw);
@@ -50,18 +60,34 @@ async function main() {
   const locationsPath = path.join(backupDir, "locations.json");
   const imagesDir = path.join(backupDir, "images");
 
-  for (const requiredFile of [plantsPath, lastClickedPath, locationsPath]) {
+  for (const requiredFile of [plantsPath, locationsPath]) {
     if (!fs.existsSync(requiredFile)) {
       throw new Error(`Missing file: ${requiredFile}`);
     }
   }
 
   const sourcePlants = JSON.parse(fs.readFileSync(plantsPath, "utf8"));
-  const lastClicked = JSON.parse(fs.readFileSync(lastClickedPath, "utf8"));
+  const lastClicked = fs.existsSync(lastClickedPath)
+    ? JSON.parse(fs.readFileSync(lastClickedPath, "utf8"))
+    : null;
   const sourceLocations = JSON.parse(fs.readFileSync(locationsPath, "utf8"));
 
-  const garden = await prisma.garden.findFirst({
-    orderBy: { createdAt: "asc" },
+  let owner = await prisma.user.findUnique({
+    where: { email: SYSTEM_EMAIL },
+  });
+
+  if (!owner) {
+    owner = await prisma.user.create({
+      data: {
+        email: SYSTEM_EMAIL,
+        password: SYSTEM_PASSWORD,
+        name: "Local Household",
+      },
+    });
+  }
+
+  let garden = await prisma.garden.findFirst({
+    where: { ownerId: owner.id },
     include: {
       members: {
         where: { role: "OWNER" },
@@ -72,8 +98,51 @@ async function main() {
   });
 
   if (!garden) {
-    throw new Error("No garden found in V2 database");
+    garden = await prisma.garden.create({
+      data: {
+        name: GARDEN_NAME,
+        ownerId: owner.id,
+        members: {
+          create: {
+            userId: owner.id,
+            role: "OWNER",
+          },
+        },
+      },
+      include: {
+        members: {
+          where: { role: "OWNER" },
+          select: { userId: true },
+          take: 1,
+        },
+      },
+    });
   }
+
+  const legacyGardens = await prisma.garden.findMany({
+    where: {
+      id: { not: garden.id },
+    },
+    select: { id: true },
+  });
+
+  if (legacyGardens.length > 0) {
+    await prisma.garden.deleteMany({
+      where: {
+        id: {
+          in: legacyGardens.map((entry) => entry.id),
+        },
+      },
+    });
+  }
+
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        not: SYSTEM_EMAIL,
+      },
+    },
+  });
 
   const ownerUserId = garden.members[0]?.userId ?? garden.ownerId;
   const uploadDir = getUploadDir();
@@ -125,6 +194,8 @@ async function main() {
         fs.copyFileSync(sourceImagePath, targetImagePath);
         photoUrl = `/uploads/${imageName}`;
         copiedImages++;
+      } else if (fs.existsSync(targetImagePath)) {
+        photoUrl = `/uploads/${imageName}`;
       } else {
         missingImages++;
       }
@@ -179,6 +250,7 @@ async function main() {
         importedCareEvents,
         copiedImages,
         missingImages,
+        importedLastClicked: Boolean(lastClicked),
         archivedPlants: sourcePlants.filter((plant) => plant.archived).length,
       },
       null,
