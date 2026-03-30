@@ -7,6 +7,7 @@ const DEFAULT_SERVER_PORT = "3000";
 interface AppState {
   gardenId: string | null;
   gardenName: string | null;
+  lastSeenChangeVersion: number;
   serverHost: string;
   serverPort: string;
   protocol: "http" | "https";
@@ -15,6 +16,7 @@ interface AppState {
   hasHydrated: boolean;
   hasLocalData: boolean;
   setGardenContext: (gardenId: string, gardenName: string) => void;
+  setLastSeenChangeVersion: (version: number) => void;
   setServerConfig: (config: {
     serverHost: string;
     serverPort: string;
@@ -31,6 +33,7 @@ export const useAppStore = create<AppState>()(
     (set) => ({
       gardenId: null,
       gardenName: null,
+      lastSeenChangeVersion: 0,
       serverHost: DEFAULT_SERVER_HOST,
       serverPort: DEFAULT_SERVER_PORT,
       protocol: "http",
@@ -39,11 +42,13 @@ export const useAppStore = create<AppState>()(
       hasHydrated: false,
       hasLocalData: false,
       setGardenContext: (gardenId, gardenName) => set({ gardenId, gardenName }),
+      setLastSeenChangeVersion: (lastSeenChangeVersion) => set({ lastSeenChangeVersion }),
       setServerConfig: ({ serverHost, serverPort, protocol = "http" }) =>
         set({
           serverHost: serverHost.trim(),
           serverPort: serverPort.trim() || "3000",
           protocol,
+          lastSeenChangeVersion: 0,
         }),
       setLastSuccessfulSyncAt: (lastSuccessfulSyncAt) => set({ lastSuccessfulSyncAt }),
       markSetupComplete: () => set({ setupComplete: true }),

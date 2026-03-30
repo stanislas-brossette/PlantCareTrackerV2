@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalPlant, PendingAction } from "@plantcare/shared";
+import type { ChangeSetPayload, LocalPlant, PendingAction } from "@plantcare/shared";
 
 const pendingActions: PendingAction[] = [];
 const plants = new Map<string, LocalPlant>();
@@ -17,15 +17,22 @@ vi.mock("./api", () => ({
 
 vi.mock("./photos", () => ({
   cacheAllPlantPhotos: vi.fn(),
+  cachePhotoForPlant: vi.fn(async () => null),
   uploadPhotoDataUrl: vi.fn(),
 }));
 
+const appState = {
+  lastSeenChangeVersion: 0,
+  setGardenContext: vi.fn(),
+  setLastSuccessfulSyncAt: vi.fn(),
+  setLastSeenChangeVersion: vi.fn((version: number) => {
+    appState.lastSeenChangeVersion = version;
+  }),
+};
+
 vi.mock("../stores/app", () => ({
   useAppStore: {
-    getState: () => ({
-      setGardenContext: vi.fn(),
-      setLastSuccessfulSyncAt: vi.fn(),
-    }),
+    getState: () => appState,
   },
 }));
 
@@ -84,6 +91,7 @@ vi.mock("./db", () => ({
     },
   },
   hydrateBootstrapToLocal: vi.fn(),
+  applyChangeSetToLocal: vi.fn(),
   removeAction: vi.fn(async (id: string) => {
     const index = pendingActions.findIndex((action) => action.id === id);
     if (index >= 0) {
@@ -93,8 +101,9 @@ vi.mock("./db", () => ({
 }));
 
 import api from "./api";
-import { uploadPhotoDataUrl } from "./photos";
-import { flushPendingActions } from "./sync";
+import { cachePhotoForPlant, uploadPhotoDataUrl } from "./photos";
+import { applyChangeSetToLocal } from "./db";
+import { flushPendingActions, syncRemoteChanges } from "./sync";
 
 const basePlant: LocalPlant = {
   id: "temp-plant",
@@ -127,6 +136,7 @@ describe("sync queue", () => {
     plants.clear();
     locations.clear();
     careEvents.clear();
+    appState.lastSeenChangeVersion = 0;
     vi.clearAllMocks();
   });
 
@@ -222,5 +232,39 @@ describe("sync queue", () => {
       kind: "UPDATE_PLANT",
       payload: { id: "missing-plant", name: "Ghost" },
     });
+  });
+
+  it("applies remote deltas only when a newer change version exists", async () => {
+    const changeSet: ChangeSetPayload = {
+      since: 0,
+      currentVersion: 4,
+      generatedAt: new Date().toISOString(),
+      changes: {
+        plants: [
+          {
+            ...basePlant,
+            id: "remote-plant",
+            name: "Calathea",
+            photoUrl: "/uploads/calathea.jpg",
+          },
+        ],
+        deletedPlantIds: [],
+        locations: [],
+        deletedLocationIds: [],
+        careEvents: [],
+        deletedCareEventIds: [],
+      },
+    };
+
+    vi.mocked(api.get).mockResolvedValue({ data: changeSet });
+
+    const first = await syncRemoteChanges();
+    const second = await syncRemoteChanges();
+
+    expect(first?.currentVersion).toBe(4);
+    expect(second).toBeNull();
+    expect(applyChangeSetToLocal).toHaveBeenCalledTimes(1);
+    expect(cachePhotoForPlant).toHaveBeenCalledWith("remote-plant", "/uploads/calathea.jpg");
+    expect(appState.setLastSeenChangeVersion).toHaveBeenCalledWith(4);
   });
 });

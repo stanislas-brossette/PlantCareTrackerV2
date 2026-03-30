@@ -3,7 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLiveQuery } from "dexie-react-hooks";
 import toast from "react-hot-toast";
 import { db } from "../lib/db";
-import { bootstrapFromServer, checkServerHealth, flushPendingActions } from "../lib/sync";
+import {
+  bootstrapFromServer,
+  checkServerHealth,
+  flushPendingActions,
+  subscribeToServerEvents,
+  syncRemoteChanges,
+} from "../lib/sync";
 import { useOfflineStore } from "../stores/offline";
 import { useAppStore } from "../stores/app";
 
@@ -20,15 +26,54 @@ export function useOfflineSync() {
 
   useEffect(() => {
     let cancelled = false;
+    let stopRealtime: (() => void) | null = null;
+
+    const disconnectRealtime = () => {
+      stopRealtime?.();
+      stopRealtime = null;
+    };
+
+    const applyRealtimeChanges = async (versionHint?: number) => {
+      if (useOfflineStore.getState().pendingCount > 0) {
+        return;
+      }
+
+      const currentVersion = useAppStore.getState().lastSeenChangeVersion;
+      if (versionHint !== undefined && versionHint <= currentVersion) {
+        return;
+      }
+
+      const changeSet = await syncRemoteChanges();
+      if (cancelled || !changeSet) return;
+      setLastSyncError(null);
+      qc.invalidateQueries();
+    };
+
+    const ensureRealtimeConnection = () => {
+      if (stopRealtime || typeof window === "undefined" || typeof window.EventSource === "undefined") {
+        return;
+      }
+
+      stopRealtime = subscribeToServerEvents({
+        onVersion: (version) => {
+          void applyRealtimeChanges(version);
+        },
+        onDisconnect: () => {
+          disconnectRealtime();
+        },
+      });
+    };
 
     const syncAgainstServer = async () => {
       if (!hasHydrated || !setupComplete || !serverHost.trim()) {
+        disconnectRealtime();
         setOnline(false);
         setSyncing(false);
         return;
       }
 
       if (!navigator.onLine) {
+        disconnectRealtime();
         setOnline(false);
         setSyncing(false);
         return;
@@ -45,8 +90,12 @@ export function useOfflineSync() {
         if (result.remaining === 0) {
           await bootstrapFromServer();
           if (cancelled) return;
-          qc.invalidateQueries();
+        } else {
+          await applyRealtimeChanges();
+          if (cancelled) return;
         }
+        ensureRealtimeConnection();
+        qc.invalidateQueries();
         if (result.success > 0) {
           toast.success(`${result.success} action(s) synchronisée(s)`);
         }
@@ -60,6 +109,7 @@ export function useOfflineSync() {
         }
       } catch {
         if (cancelled) return;
+        disconnectRealtime();
         setOnline(false);
         setLastSyncError("Serveur Raspberry Pi inaccessible");
       } finally {
@@ -70,11 +120,13 @@ export function useOfflineSync() {
     const probeServer = async () => {
       if (cancelled) return;
       if (!hasHydrated || !setupComplete || !serverHost.trim()) {
+        disconnectRealtime();
         setOnline(false);
         setSyncing(false);
         return;
       }
       if (!navigator.onLine) {
+        disconnectRealtime();
         setOnline(false);
         setSyncing(false);
         return;
@@ -84,15 +136,21 @@ export function useOfflineSync() {
       }
 
       try {
-        await checkServerHealth(1200);
+        const health = await checkServerHealth(1200);
         if (cancelled) return;
         const wasOnline = useOfflineStore.getState().isOnline;
         setOnline(true);
         if (!wasOnline) {
           void syncAgainstServer();
+          return;
+        }
+        ensureRealtimeConnection();
+        if (health.latestChangeVersion > useAppStore.getState().lastSeenChangeVersion) {
+          void applyRealtimeChanges(health.latestChangeVersion);
         }
       } catch {
         if (cancelled) return;
+        disconnectRealtime();
         setOnline(false);
         setSyncing(false);
       }
@@ -102,6 +160,7 @@ export function useOfflineSync() {
       void syncAgainstServer();
     };
     const handleOffline = () => {
+      disconnectRealtime();
       setOnline(false);
       setSyncing(false);
     };
@@ -116,6 +175,7 @@ export function useOfflineSync() {
 
     return () => {
       cancelled = true;
+      disconnectRealtime();
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       window.clearInterval(interval);

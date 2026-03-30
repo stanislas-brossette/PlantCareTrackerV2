@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { CreateLocationSchema } from "@plantcare/shared";
+import { recordChanges } from "../utils/changes.js";
 import { ensureMvpContext } from "../utils/mvp.js";
 
 const locationRoutes: FastifyPluginAsync = async (fastify) => {
@@ -28,6 +29,9 @@ const locationRoutes: FastifyPluginAsync = async (fastify) => {
     const location = await fastify.prisma.location.create({
       data: { gardenId: garden.id, name: parsedBody.data.name },
     });
+    await recordChanges(fastify, garden.id, [
+      { entityType: "LOCATION", entityId: location.id, changeType: "UPSERT" },
+    ]);
     reply.status(201).send(location);
   });
 
@@ -36,12 +40,24 @@ const locationRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id: req.params.id },
     });
     if (!location) return reply.status(404).send({ error: "Not found" });
+    const affectedPlants = await fastify.prisma.plant.findMany({
+      where: { locationId: req.params.id },
+      select: { id: true },
+    });
 
     await fastify.prisma.plant.updateMany({
       where: { locationId: req.params.id },
       data: { locationId: null },
     });
     await fastify.prisma.location.delete({ where: { id: req.params.id } });
+    await recordChanges(fastify, location.gardenId, [
+      { entityType: "LOCATION", entityId: location.id, changeType: "DELETE" },
+      ...affectedPlants.map((plant) => ({
+        entityType: "PLANT" as const,
+        entityId: plant.id,
+        changeType: "UPSERT" as const,
+      })),
+    ]);
     reply.send({ ok: true });
   });
 };

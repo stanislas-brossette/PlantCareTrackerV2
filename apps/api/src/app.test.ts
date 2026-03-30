@@ -64,6 +64,52 @@ describe.sequential("MVP API", () => {
     expect(bootstrap.json().plants).toHaveLength(1);
     expect(bootstrap.json().careEvents).toHaveLength(1);
     expect(bootstrap.json().context.gardenName).toBeTruthy();
+    expect(bootstrap.json().changeVersion).toBeGreaterThan(0);
+  });
+
+  it("returns delta changes since a given version", async () => {
+    const ctx = await createTestApp();
+    cleanup = ctx.cleanup;
+
+    const initialBootstrap = await ctx.app.inject({
+      method: "GET",
+      url: "/api/bootstrap",
+    });
+    expect(initialBootstrap.statusCode).toBe(200);
+    expect(initialBootstrap.json().changeVersion).toBe(0);
+
+    const location = await ctx.app.inject({
+      method: "POST",
+      url: "/api/locations",
+      payload: { name: "Salon" },
+    });
+    expect(location.statusCode).toBe(201);
+
+    const createdPlant = await ctx.app.inject({
+      method: "POST",
+      url: "/api/plants",
+      payload: { name: "Calathea", locationId: location.json().id },
+    });
+    expect(createdPlant.statusCode).toBe(201);
+
+    const care = await ctx.app.inject({
+      method: "POST",
+      url: "/api/care",
+      payload: { plantId: createdPlant.json().id, type: "WATERING" },
+    });
+    expect(care.statusCode).toBe(201);
+
+    const changes = await ctx.app.inject({
+      method: "GET",
+      url: "/api/changes?since=0",
+    });
+
+    expect(changes.statusCode).toBe(200);
+    expect(changes.json().currentVersion).toBeGreaterThanOrEqual(3);
+    expect(changes.json().changes.locations).toHaveLength(1);
+    expect(changes.json().changes.plants).toHaveLength(1);
+    expect(changes.json().changes.careEvents).toHaveLength(1);
+    expect(changes.json().changes.deletedPlantIds).toEqual([]);
   });
 
   it("returns AI identification preview from an uploaded photo", async () => {

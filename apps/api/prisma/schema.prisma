@@ -27,6 +27,7 @@ model Garden {
   plants    Plant[]
   locations Location[]
   members   GardenMember[]
+  changes   ChangeLog[]
   createdAt DateTime       @default(now())
 }
 
@@ -87,4 +88,17 @@ model PushSubscription {
   p256dh   String
   auth     String
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ChangeLog {
+  version    Int      @id @default(autoincrement())
+  entityType String
+  entityId   String
+  changeType String
+  gardenId   String
+  garden     Garden   @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([gardenId, version])
+  @@index([gardenId, entityType, entityId])
 }

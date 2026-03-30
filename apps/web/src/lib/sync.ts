@@ -1,10 +1,12 @@
 import api from "./api";
-import { db, hydrateBootstrapToLocal, removeAction } from "./db";
-import { cacheAllPlantPhotos, uploadPhotoDataUrl } from "./photos";
-import type { BootstrapPayload, Location, PendingAction } from "@plantcare/shared";
+import { applyChangeSetToLocal, db, hydrateBootstrapToLocal, removeAction } from "./db";
+import { cacheAllPlantPhotos, cachePhotoForPlant, uploadPhotoDataUrl } from "./photos";
+import type { BootstrapPayload, ChangeSetPayload, Location, PendingAction } from "@plantcare/shared";
 import { useAppStore } from "../stores/app";
+import { getApiBaseUrl } from "./serverConfig";
 
 const MAX_RETRIES = 5;
+let realtimeApplyPromise: Promise<ChangeSetPayload | null> | null = null;
 
 type IdRemapState = {
   plantIds: Map<string, string>;
@@ -217,8 +219,10 @@ export async function bootstrapFromServer() {
   const res = await api.get<BootstrapPayload>("/bootstrap");
   await hydrateBootstrapToLocal(res.data);
   await cacheAllPlantPhotos();
-  useAppStore.getState().setGardenContext(res.data.context.gardenId, res.data.context.gardenName);
-  useAppStore.getState().setLastSuccessfulSyncAt(new Date().toISOString());
+  const appState = useAppStore.getState();
+  appState.setGardenContext(res.data.context.gardenId, res.data.context.gardenName);
+  appState.setLastSuccessfulSyncAt(new Date().toISOString());
+  appState.setLastSeenChangeVersion(res.data.changeVersion);
   return res.data;
 }
 
@@ -228,10 +232,86 @@ export async function checkServerHealth(timeout = 1500) {
     ts: string;
     gardenId: string;
     gardenName: string;
+    latestChangeVersion: number;
   }>("/health", {
     timeout,
   });
   return res.data;
+}
+
+export async function fetchChangesSince(since: number) {
+  const res = await api.get<ChangeSetPayload>("/changes", {
+    params: { since },
+  });
+  return res.data;
+}
+
+export async function applyRemoteChanges(changeSet: ChangeSetPayload) {
+  if (changeSet.currentVersion <= useAppStore.getState().lastSeenChangeVersion) {
+    return changeSet;
+  }
+
+  await applyChangeSetToLocal(changeSet);
+  await Promise.all(
+    changeSet.changes.plants.map((plant) => cachePhotoForPlant(plant.id, plant.photoUrl).catch(() => null)),
+  );
+
+  const appState = useAppStore.getState();
+  if (changeSet.currentVersion > appState.lastSeenChangeVersion) {
+    appState.setLastSeenChangeVersion(changeSet.currentVersion);
+    appState.setLastSuccessfulSyncAt(new Date().toISOString());
+  }
+
+  return changeSet;
+}
+
+export async function syncRemoteChanges() {
+  if (realtimeApplyPromise) {
+    return realtimeApplyPromise;
+  }
+
+  realtimeApplyPromise = (async () => {
+    const since = useAppStore.getState().lastSeenChangeVersion ?? 0;
+    const changeSet = await fetchChangesSince(since);
+    if (changeSet.currentVersion <= since) {
+      return null;
+    }
+
+    await applyRemoteChanges(changeSet);
+    return changeSet;
+  })();
+
+  try {
+    return await realtimeApplyPromise;
+  } finally {
+    realtimeApplyPromise = null;
+  }
+}
+
+export function subscribeToServerEvents(handlers: {
+  onVersion: (version: number) => void;
+  onDisconnect?: () => void;
+}) {
+  const url = new URL(`${getApiBaseUrl()}/events`);
+  const source = new EventSource(url.toString());
+
+  source.addEventListener("change", (event) => {
+    try {
+      const data = JSON.parse((event as MessageEvent<string>).data) as { version?: number };
+      if (typeof data.version === "number") {
+        handlers.onVersion(data.version);
+      }
+    } catch {
+      // Ignore malformed events.
+    }
+  });
+
+  source.onerror = () => {
+    handlers.onDisconnect?.();
+    source.close();
+  };
+
+  return () => source.close();
 }
 
 export async function flushPendingActions(
@@ -287,6 +367,9 @@ export async function runFullResync() {
   await checkServerHealth();
   const queued = await flushPendingActions();
   const bootstrap = queued.remaining === 0 ? await bootstrapFromServer() : null;
+  if (!bootstrap) {
+    await syncRemoteChanges();
+  }
 
   return {
     bootstrap,

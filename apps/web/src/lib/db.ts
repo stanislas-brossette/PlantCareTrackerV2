@@ -1,5 +1,12 @@
 import Dexie, { Table } from "dexie";
-import type { BootstrapPayload, CareEvent, LocalPlant, Location, PendingAction } from "@plantcare/shared";
+import type {
+  BootstrapPayload,
+  CareEvent,
+  ChangeSetPayload,
+  LocalPlant,
+  Location,
+  PendingAction,
+} from "@plantcare/shared";
 
 export class PlantCareDB extends Dexie {
   plants!: Table<LocalPlant>;
@@ -28,6 +35,37 @@ export async function hydrateBootstrapToLocal(snapshot: BootstrapPayload) {
     await db.plants.bulkPut(snapshot.plants as LocalPlant[]);
     await db.locations.bulkPut(snapshot.locations);
     await db.careEvents.bulkPut(snapshot.careEvents);
+  });
+}
+
+export async function applyChangeSetToLocal(changeSet: ChangeSetPayload) {
+  await db.transaction("rw", db.plants, db.locations, db.careEvents, async () => {
+    if (changeSet.changes.deletedPlantIds.length > 0) {
+      await db.plants.bulkDelete(changeSet.changes.deletedPlantIds);
+    }
+    if (changeSet.changes.deletedLocationIds.length > 0) {
+      await db.locations.bulkDelete(changeSet.changes.deletedLocationIds);
+    }
+    if (changeSet.changes.deletedCareEventIds.length > 0) {
+      await db.careEvents.bulkDelete(changeSet.changes.deletedCareEventIds);
+    }
+
+    if (changeSet.changes.plants.length > 0) {
+      const existing = await db.plants.bulkGet(changeSet.changes.plants.map((plant) => plant.id));
+      const toStore = changeSet.changes.plants.map((plant, index) => ({
+        ...(plant as LocalPlant),
+        cachedPhotoUrl: existing[index]?.cachedPhotoUrl ?? null,
+      }));
+      await db.plants.bulkPut(toStore);
+    }
+
+    if (changeSet.changes.locations.length > 0) {
+      await db.locations.bulkPut(changeSet.changes.locations);
+    }
+
+    if (changeSet.changes.careEvents.length > 0) {
+      await db.careEvents.bulkPut(changeSet.changes.careEvents);
+    }
   });
 }
 

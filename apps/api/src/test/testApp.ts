@@ -12,24 +12,16 @@ import careRoutes from "../routes/care.js";
 import identifyRoutes from "../routes/identify.js";
 import locationRoutes from "../routes/locations.js";
 import bootstrapRoutes from "../routes/bootstrap.js";
+import changeRoutes from "../routes/changes.js";
 import { ensureMvpContext } from "../utils/mvp.js";
 
 async function initializeTestDatabase(databaseUrl: string) {
-  const migrationPath = path.resolve(
-    process.cwd(),
-    "prisma/migrations/20260325122221_init/migration.sql"
-  );
-  const migrationSql = fs.readFileSync(migrationPath, "utf8");
-  const statements = migrationSql
-    .split(/;\s*(?:\r?\n|$)/)
-    .map((statement) =>
-      statement
-        .split(/\r?\n/)
-        .filter((line) => !line.trim().startsWith("--"))
-        .join("\n")
-        .trim()
-    )
-    .filter(Boolean);
+  const migrationsDir = path.resolve(process.cwd(), "prisma/migrations");
+  const migrationPaths = fs
+    .readdirSync(migrationsDir)
+    .sort()
+    .map((entry) => path.join(migrationsDir, entry, "migration.sql"))
+    .filter((entry) => fs.existsSync(entry));
 
   const prisma = new PrismaClient({
     datasources: { db: { url: databaseUrl } },
@@ -38,8 +30,22 @@ async function initializeTestDatabase(databaseUrl: string) {
   await prisma.$connect();
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
-  for (const statement of statements) {
-    await prisma.$executeRawUnsafe(statement);
+  for (const migrationPath of migrationPaths) {
+    const migrationSql = fs.readFileSync(migrationPath, "utf8");
+    const statements = migrationSql
+      .split(/;\s*(?:\r?\n|$)/)
+      .map((statement) =>
+        statement
+          .split(/\r?\n/)
+          .filter((line) => !line.trim().startsWith("--"))
+          .join("\n")
+          .trim()
+      )
+      .filter(Boolean);
+
+    for (const statement of statements) {
+      await prisma.$executeRawUnsafe(statement);
+    }
   }
 
   await prisma.$disconnect();
@@ -78,6 +84,7 @@ export async function createTestApp() {
   await ensureMvpContext(app);
 
   app.register(bootstrapRoutes, { prefix: "/api" });
+  app.register(changeRoutes, { prefix: "/api" });
   app.register(plantRoutes, { prefix: "/api/plants" });
   app.register(locationRoutes, { prefix: "/api/locations" });
   app.register(careRoutes, { prefix: "/api/care" });

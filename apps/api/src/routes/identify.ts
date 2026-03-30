@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import OpenAI from "openai";
 import fs from "fs/promises";
 import path from "path";
+import { recordChanges } from "../utils/changes.js";
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, "../../uploads"));
 
@@ -342,6 +343,9 @@ const identifyRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id: plant.id },
         data: updateData,
       });
+      await recordChanges(fastify, plant.gardenId, [
+        { entityType: "PLANT", entityId: updatedPlant.id, changeType: "UPSERT" },
+      ]);
 
       reply.send({
         ok: true,

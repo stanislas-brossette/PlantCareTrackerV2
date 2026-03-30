@@ -85,6 +85,21 @@ export interface BootstrapPayload {
   plants: Plant[];
   locations: Location[];
   careEvents: CareEvent[];
+  changeVersion: number;
+  generatedAt: string;
+}
+
+export interface ChangeSetPayload {
+  since: number;
+  currentVersion: number;
+  changes: {
+    plants: Plant[];
+    deletedPlantIds: string[];
+    locations: Location[];
+    deletedLocationIds: string[];
+    careEvents: CareEvent[];
+    deletedCareEventIds: string[];
+  };
   generatedAt: string;
 }
 

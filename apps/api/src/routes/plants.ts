@@ -1,120 +1,20 @@
 import { FastifyPluginAsync } from "fastify";
 import { CreatePlantSchema, UpdatePlantSchema } from "@plantcare/shared";
 import { saveImage, deleteImage } from "../utils/images.js";
-import { getEffectiveFreq, parseMonthlyFreq, serializeMonthlyFreq } from "../utils/freq.js";
+import { getEffectiveFreq, serializeMonthlyFreq } from "../utils/freq.js";
+import { recordChanges } from "../utils/changes.js";
 import { ensureMvpContext } from "../utils/mvp.js";
-
-function computePlantStatus(
-  plant: {
-    wateringFreqDays: number | null;
-    fertilizingFreqDays: number | null;
-    wateringFreqByMonth: string | null;
-    fertilizingFreqByMonth: string | null;
-  },
-  lastWatered: Date | null,
-  lastFertilized: Date | null
-) {
-  const now = new Date();
-  const daysSince = (date: Date | null) =>
-    date ? (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24) : Infinity;
-
-  const waterFreq = getEffectiveFreq(plant.wateringFreqByMonth, plant.wateringFreqDays, now);
-  const fertFreq = getEffectiveFreq(plant.fertilizingFreqByMonth, plant.fertilizingFreqDays, now);
-
-  return {
-    needsWatering: waterFreq != null && daysSince(lastWatered) >= waterFreq,
-    needsFertilizing: fertFreq != null && daysSince(lastFertilized) >= fertFreq,
-    currentWateringFreq: waterFreq,
-    currentFertilizingFreq: fertFreq,
-  };
-}
+import { getPlantWithStatus, getPlantsWithStatusForGarden } from "../utils/snapshot.js";
 
 const plantRoutes: FastifyPluginAsync = async (fastify) => {
-  async function getPlantWithStatus(id: string) {
-    const plant = await fastify.prisma.plant.findUnique({
-      where: { id },
-      include: { location: true },
-    });
-    if (!plant) return null;
-
-    const [lastWateringEvent, lastFertilizingEvent] = await Promise.all([
-      fastify.prisma.careEvent.findFirst({
-        where: { plantId: id, type: "WATERING" },
-        orderBy: { performedAt: "desc" },
-      }),
-      fastify.prisma.careEvent.findFirst({
-        where: { plantId: id, type: "FERTILIZING" },
-        orderBy: { performedAt: "desc" },
-      }),
-    ]);
-
-    const { needsWatering, needsFertilizing, currentWateringFreq, currentFertilizingFreq } =
-      computePlantStatus(plant, lastWateringEvent?.performedAt ?? null, lastFertilizingEvent?.performedAt ?? null);
-
-    return {
-      ...plant,
-      wateringFreqByMonth: parseMonthlyFreq(plant.wateringFreqByMonth),
-      fertilizingFreqByMonth: parseMonthlyFreq(plant.fertilizingFreqByMonth),
-      lastWatered: lastWateringEvent?.performedAt ?? null,
-      lastFertilized: lastFertilizingEvent?.performedAt ?? null,
-      needsWatering,
-      needsFertilizing,
-      currentWateringFreq,
-      currentFertilizingFreq,
-    };
-  }
-
   fastify.get<{ Querystring: { archived?: string } }>("/", async (req, reply) => {
     const { garden } = await ensureMvpContext(fastify);
     const archived = req.query.archived === "true";
-
-    const plants = await fastify.prisma.plant.findMany({
-      where: {
-        gardenId: garden.id,
-        archived,
-      },
-      include: { location: true },
-      orderBy: { name: "asc" },
-    });
-
-    const plantIds = plants.map((p) => p.id);
-    const [lastWaterings, lastFertilizings] = await Promise.all([
-      fastify.prisma.careEvent.findMany({
-        where: { plantId: { in: plantIds }, type: "WATERING" },
-        orderBy: { performedAt: "desc" },
-        distinct: ["plantId"],
-      }),
-      fastify.prisma.careEvent.findMany({
-        where: { plantId: { in: plantIds }, type: "FERTILIZING" },
-        orderBy: { performedAt: "desc" },
-        distinct: ["plantId"],
-      }),
-    ]);
-
-    const lastWMap = Object.fromEntries(lastWaterings.map((e) => [e.plantId, e.performedAt]));
-    const lastFMap = Object.fromEntries(lastFertilizings.map((e) => [e.plantId, e.performedAt]));
-
-    reply.send(
-      plants.map((plant) => {
-        const { needsWatering, needsFertilizing, currentWateringFreq, currentFertilizingFreq } =
-          computePlantStatus(plant, lastWMap[plant.id] ?? null, lastFMap[plant.id] ?? null);
-        return {
-          ...plant,
-          wateringFreqByMonth: parseMonthlyFreq(plant.wateringFreqByMonth),
-          fertilizingFreqByMonth: parseMonthlyFreq(plant.fertilizingFreqByMonth),
-          lastWatered: lastWMap[plant.id] ?? null,
-          lastFertilized: lastFMap[plant.id] ?? null,
-          needsWatering,
-          needsFertilizing,
-          currentWateringFreq,
-          currentFertilizingFreq,
-        };
-      })
-    );
+    reply.send(await getPlantsWithStatusForGarden(fastify.prisma, garden.id, archived));
   });
 
   fastify.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    const plant = await getPlantWithStatus(req.params.id);
+    const plant = await getPlantWithStatus(fastify.prisma, req.params.id);
     if (!plant) return reply.status(404).send({ error: "Not found" });
     reply.send(plant);
   });
@@ -137,6 +37,10 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       },
       include: { location: true },
     });
+
+    await recordChanges(fastify, garden.id, [
+      { entityType: "PLANT", entityId: plant.id, changeType: "UPSERT" },
+    ]);
 
     reply.status(201).send({
       ...plant,
@@ -176,7 +80,11 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    reply.send(await getPlantWithStatus(req.params.id));
+    await recordChanges(fastify, existing.gardenId, [
+      { entityType: "PLANT", entityId: req.params.id, changeType: "UPSERT" },
+    ]);
+
+    reply.send(await getPlantWithStatus(fastify.prisma, req.params.id));
   });
 
   fastify.post<{ Params: { id: string } }>("/:id/photo", async (req, reply) => {
@@ -197,6 +105,9 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id: req.params.id },
       data: { photoUrl },
     });
+    await recordChanges(fastify, existing.gardenId, [
+      { entityType: "PLANT", entityId: plant.id, changeType: "UPSERT" },
+    ]);
     reply.send({ photoUrl: plant.photoUrl });
   });
 
@@ -205,9 +116,21 @@ const plantRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id: req.params.id },
     });
     if (!existing) return reply.status(404).send({ error: "Not found" });
+    const careEvents = await fastify.prisma.careEvent.findMany({
+      where: { plantId: existing.id },
+      select: { id: true },
+    });
 
     if (existing.photoUrl) await deleteImage(existing.photoUrl);
     await fastify.prisma.plant.delete({ where: { id: req.params.id } });
+    await recordChanges(fastify, existing.gardenId, [
+      { entityType: "PLANT", entityId: existing.id, changeType: "DELETE" },
+      ...careEvents.map((event) => ({
+        entityType: "CARE_EVENT" as const,
+        entityId: event.id,
+        changeType: "DELETE" as const,
+      })),
+    ]);
     reply.send({ ok: true });
   });
 };

@@ -10,10 +10,18 @@ vi.mock("../lib/sync", () => ({
   bootstrapFromServer: vi.fn(),
   checkServerHealth: vi.fn(),
   flushPendingActions: vi.fn(),
+  subscribeToServerEvents: vi.fn(() => vi.fn()),
+  syncRemoteChanges: vi.fn(),
 }));
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { bootstrapFromServer, checkServerHealth, flushPendingActions } from "../lib/sync";
+import {
+  bootstrapFromServer,
+  checkServerHealth,
+  flushPendingActions,
+  subscribeToServerEvents,
+  syncRemoteChanges,
+} from "../lib/sync";
 import { useAppStore } from "../stores/app";
 import { useOfflineStore } from "../stores/offline";
 import { useOfflineSync } from "./useOfflineSync";
@@ -37,6 +45,10 @@ describe("useOfflineSync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useLiveQuery).mockReturnValue(0);
+    Object.defineProperty(window, "EventSource", {
+      configurable: true,
+      value: class MockEventSource {},
+    });
     Object.defineProperty(window.navigator, "onLine", {
       configurable: true,
       value: true,
@@ -44,6 +56,7 @@ describe("useOfflineSync", () => {
     useAppStore.setState({
       gardenId: "garden-1",
       gardenName: "Maison",
+      lastSeenChangeVersion: 0,
       serverHost: "192.168.1.42",
       serverPort: "3000",
       protocol: "http",
@@ -51,6 +64,7 @@ describe("useOfflineSync", () => {
       setupComplete: true,
       hasHydrated: true,
       hasLocalData: true,
+      setLastSeenChangeVersion: vi.fn(),
     });
     useOfflineStore.setState({
       isOnline: false,
@@ -66,6 +80,7 @@ describe("useOfflineSync", () => {
       ts: new Date().toISOString(),
       gardenId: "garden-1",
       gardenName: "Maison",
+      latestChangeVersion: 0,
     });
     vi.mocked(bootstrapFromServer).mockResolvedValue({} as never);
     vi.mocked(flushPendingActions).mockResolvedValue({ success: 0, failed: 0, remaining: 0 });
@@ -76,6 +91,7 @@ describe("useOfflineSync", () => {
     await waitFor(() => expect(useOfflineStore.getState().isOnline).toBe(true));
     expect(checkServerHealth).toHaveBeenCalled();
     expect(bootstrapFromServer).toHaveBeenCalled();
+    expect(subscribeToServerEvents).toHaveBeenCalled();
   });
 
   it("does not bootstrap while pending actions still remain unresolved", async () => {
@@ -84,8 +100,10 @@ describe("useOfflineSync", () => {
       ts: new Date().toISOString(),
       gardenId: "garden-1",
       gardenName: "Maison",
+      latestChangeVersion: 0,
     });
     vi.mocked(flushPendingActions).mockResolvedValue({ success: 1, failed: 1, remaining: 1 });
+    vi.mocked(syncRemoteChanges).mockResolvedValue(null);
 
     const { wrapper } = createWrapper();
     renderHook(() => useOfflineSync(), { wrapper });
@@ -95,6 +113,7 @@ describe("useOfflineSync", () => {
     );
 
     expect(bootstrapFromServer).not.toHaveBeenCalled();
+    expect(syncRemoteChanges).toHaveBeenCalled();
     expect(useOfflineStore.getState().isOnline).toBe(true);
   });
 

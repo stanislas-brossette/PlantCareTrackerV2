@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { CareTypeSchema } from "@plantcare/shared";
+import { recordChanges } from "../utils/changes.js";
 import { ensureMvpContext } from "../utils/mvp.js";
 
 const careRoutes: FastifyPluginAsync = async (fastify) => {
@@ -37,7 +38,7 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: "Invalid performedAt date" });
     }
 
-    await assertPlantExists(payload.plantId);
+    const plant = await assertPlantExists(payload.plantId);
     const { user } = await ensureMvpContext(fastify);
 
     const event = await fastify.prisma.careEvent.create({
@@ -49,6 +50,10 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
         note: payload.note ?? null,
       },
     });
+    await recordChanges(fastify, plant.gardenId, [
+      { entityType: "CARE_EVENT", entityId: event.id, changeType: "UPSERT" },
+      { entityType: "PLANT", entityId: plant.id, changeType: "UPSERT" },
+    ]);
     reply.status(201).send(event);
   });
 
@@ -58,7 +63,7 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: "Invalid care type" });
     }
 
-    await assertPlantExists(req.query.plantId);
+    const plant = await assertPlantExists(req.query.plantId);
 
     const last = await fastify.prisma.careEvent.findFirst({
       where: { plantId: req.query.plantId, type: parsedType.data },
@@ -67,6 +72,10 @@ const careRoutes: FastifyPluginAsync = async (fastify) => {
     if (!last) return reply.status(404).send({ error: "Nothing to undo" });
 
     await fastify.prisma.careEvent.delete({ where: { id: last.id } });
+    await recordChanges(fastify, plant.gardenId, [
+      { entityType: "CARE_EVENT", entityId: last.id, changeType: "DELETE" },
+      { entityType: "PLANT", entityId: plant.id, changeType: "UPSERT" },
+    ]);
     reply.send({ ok: true, deleted: last });
   });
 };

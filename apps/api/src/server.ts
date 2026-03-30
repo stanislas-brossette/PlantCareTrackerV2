@@ -11,7 +11,9 @@ import locationRoutes from "./routes/locations.js";
 import careRoutes from "./routes/care.js";
 import identifyRoutes from "./routes/identify.js";
 import bootstrapRoutes from "./routes/bootstrap.js";
+import changeRoutes from "./routes/changes.js";
 import { ensureMvpContext } from "./utils/mvp.js";
+import { getLatestChangeVersion } from "./utils/changes.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -65,6 +67,7 @@ async function build() {
   await ensureMvpContext(fastify);
 
   fastify.register(bootstrapRoutes, { prefix: "/api" });
+  fastify.register(changeRoutes, { prefix: "/api" });
   fastify.register(plantRoutes, { prefix: "/api/plants" });
   fastify.register(locationRoutes, { prefix: "/api/locations" });
   fastify.register(careRoutes, { prefix: "/api/care" });
@@ -72,11 +75,13 @@ async function build() {
 
   fastify.get("/api/health", async () => {
     const { garden } = await ensureMvpContext(fastify);
+    const latestChangeVersion = await getLatestChangeVersion(fastify.prisma, garden.id);
     return {
       ok: true,
       ts: new Date().toISOString(),
       gardenId: garden.id,
       gardenName: garden.name,
+      latestChangeVersion,
     };
   });
 
