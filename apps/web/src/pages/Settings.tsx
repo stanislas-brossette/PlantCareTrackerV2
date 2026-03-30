@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Loader2, MapPin, RefreshCw, Server, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, MapPin, Moon, RefreshCw, Server, Sun, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../lib/api";
 import { bootstrapFromServer } from "../lib/sync";
@@ -19,6 +19,17 @@ export default function Settings() {
   const [newLocName, setNewLocName] = useState("");
   const [testing, setTesting] = useState(false);
   const [resyncing, setResyncing] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+      return "dark";
+    }
+    return "light";
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("theme", theme);
+  }, [theme]);
 
   const handleSaveServer = async () => {
     setTesting(true);
@@ -61,6 +72,40 @@ export default function Settings() {
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-bold text-gray-900 dark:text-white">Réglages</h1>
+
+      <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Apparence</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Choisir le mode clair ou sombre.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+            className={`relative inline-flex h-11 w-24 items-center rounded-full px-1 transition-colors ${
+              theme === "dark" ? "bg-slate-900" : "bg-amber-100"
+            }`}
+            aria-label={`Activer le mode ${theme === "dark" ? "clair" : "sombre"}`}
+          >
+            <span
+              className={`absolute inset-y-1 flex w-10 items-center justify-center rounded-full text-xs font-medium transition-all ${
+                theme === "dark"
+                  ? "translate-x-[calc(100%+0.25rem)] bg-slate-700 text-slate-100"
+                  : "translate-x-0 bg-white text-amber-700 shadow-sm"
+              }`}
+            >
+              {theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+            </span>
+            <span className="flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wide">
+              <span className={theme === "light" ? "text-amber-700" : "text-slate-400"}>Clair</span>
+              <span className={theme === "dark" ? "text-slate-200" : "text-amber-500/70"}>Sombre</span>
+            </span>
+          </button>
+        </div>
+      </section>
 
       <section className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
