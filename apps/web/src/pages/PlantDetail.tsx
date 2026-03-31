@@ -125,6 +125,57 @@ function CareSection({
   );
 }
 
+function RepottingSection({
+  lastRepottedAt,
+  onRecord,
+  onUndo,
+}: {
+  lastRepottedAt: string | null;
+  onRecord: () => void;
+  onUndo: () => void;
+}) {
+  const repotDate = lastRepottedAt ? new Date(lastRepottedAt) : null;
+
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
+      <div className="flex items-center gap-3 rounded-2xl bg-amber-50/80 p-3 dark:bg-amber-950/20">
+        <div className="text-2xl">🪴</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-gray-900 dark:text-white">Rempotage</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {repotDate ? (
+              <>
+                {`Dernier : ${formatDaysAgo(lastRepottedAt)}`}
+                <span className="ml-1">
+                  · {format(repotDate, "d MMM yyyy", { locale: fr })}
+                </span>
+              </>
+            ) : (
+              "Aucun rempotage enregistré"
+            )}
+          </div>
+        </div>
+        <button
+          onClick={onRecord}
+          className="rounded-xl bg-amber-100 px-4 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-200"
+        >
+          🪴
+        </button>
+        <button
+          onClick={onUndo}
+          className="rounded-xl p-2 text-gray-400 hover:bg-white/80 dark:hover:bg-gray-800"
+          aria-label="Annuler le dernier rempotage"
+        >
+          <Undo2 className="w-4 h-4" />
+        </button>
+      </div>
+      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        Utilise ce bouton quand la plante change de pot, pour garder une trace utile dans sa fiche.
+      </p>
+    </section>
+  );
+}
+
 export default function PlantDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -190,6 +241,14 @@ export default function PlantDetail() {
     if (!id) return;
     await undoCare.mutateAsync({ plantId: id, type });
     toast.success("Action annulée");
+  };
+
+  const lastRepotting = events.find((event) => event.type === "REPOTTING")?.performedAt ?? null;
+
+  const handleUndoRepotting = async () => {
+    if (!id) return;
+    await undoCare.mutateAsync({ plantId: id, type: "REPOTTING" });
+    toast.success("Dernier rempotage annulé");
   };
 
   const handleArchive = async () => {
@@ -424,6 +483,11 @@ export default function PlantDetail() {
           onUndo={() => handleUndo("FERTILIZING")}
           values={plant.fertilizingFreqByMonth}
           fallbackDays={plant.fertilizingFreqDays}
+        />
+        <RepottingSection
+          lastRepottedAt={lastRepotting}
+          onRecord={() => handleCare("REPOTTING")}
+          onUndo={handleUndoRepotting}
         />
       </div>
 

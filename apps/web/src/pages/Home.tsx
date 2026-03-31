@@ -45,12 +45,7 @@ export default function Home() {
   )
     .map((group) => ({
       ...group,
-      plants: [...group.plants].sort((a, b) => {
-        const aUrgent = a.needsWatering || a.needsFertilizing ? 1 : 0;
-        const bUrgent = b.needsWatering || b.needsFertilizing ? 1 : 0;
-        if (aUrgent !== bUrgent) return bUrgent - aUrgent;
-        return a.name.localeCompare(b.name, "fr");
-      }),
+      plants: [...group.plants].sort((a, b) => a.name.localeCompare(b.name, "fr")),
     }))
     .sort((a, b) => a.sortKey.localeCompare(b.sortKey, "fr"));
 

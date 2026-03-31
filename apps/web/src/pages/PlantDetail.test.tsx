@@ -123,4 +123,12 @@ describe("PlantDetail", () => {
     expect(screen.getAllByText("Jan").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Dec").length).toBeGreaterThan(0);
   });
+
+  it("shows the repotting section", () => {
+    renderWithProviders(<PlantDetail />);
+
+    expect(screen.getByText("Rempotage")).toBeInTheDocument();
+    expect(screen.getByText(/Aucun rempotage enregistré/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Annuler le dernier rempotage/i)).toBeInTheDocument();
+  });
 });

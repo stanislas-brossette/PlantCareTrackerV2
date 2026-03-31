@@ -1,0 +1,15 @@
+[Unit]
+Description=PlantCareTrackerV2
+After=network.target
+
+[Service]
+Type=simple
+User=mirror
+WorkingDirectory=/home/mirror/PlantCareTrackerV2/apps/api
+EnvironmentFile=/home/mirror/PlantCareTrackerV2/apps/api/.env
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
