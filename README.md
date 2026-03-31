@@ -281,7 +281,7 @@ hostname -I
 Tu verras une IP du style :
 
 ```text
-192.168.1.123
+192.168.1.72
 ```
 
 C'est cette IP qu'il faudra utiliser depuis le téléphone.
@@ -293,10 +293,10 @@ Le téléphone doit être sur le même Wi-Fi que le serveur.
 Dans le navigateur du téléphone, ouvre :
 
 ```text
-http://192.168.1.123:3000/api/health
+http://192.168.1.72:3000/api/health
 ```
 
-En remplaçant `192.168.1.123` par la vraie IP du serveur.
+En remplaçant `192.168.1.72` par la vraie IP du serveur.
 
 Si ça ne marche pas :
 - vérifie que le téléphone et le serveur sont sur le même réseau Wi-Fi
@@ -311,7 +311,7 @@ Une fois le frontend buildé, le backend sert aussi l'application.
 Depuis le téléphone ou un autre appareil :
 
 ```text
-http://192.168.1.123:3000
+http://192.168.1.72:3000
 ```
 
 Au premier lancement, l'app utilise l'IP par défaut configurée. Si besoin, tu peux la modifier ensuite dans `Réglages`.

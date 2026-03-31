@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const DEFAULT_SERVER_HOST = "192.168.1.123";
+const DEFAULT_SERVER_HOST = "192.168.1.72";
 const DEFAULT_SERVER_PORT = "3000";
 
 interface AppState {
